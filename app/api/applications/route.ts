@@ -3,6 +3,30 @@ import { getFirebaseAdmin, getUserFromRequest, isAdminEmail } from "@/lib/fireba
 
 export const dynamic = "force-dynamic";
 
+// Generate next sequential application ID (e.g., INCEPTA00001)
+async function generateApplicationId(db: FirebaseFirestore.Firestore): Promise<string> {
+    const counterRef = db.collection("counters").doc("applications");
+
+    // Use transaction to safely increment counter
+    const newCount = await db.runTransaction(async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+
+        let currentCount = 0;
+        if (counterDoc.exists) {
+            currentCount = counterDoc.data()?.count || 0;
+        }
+
+        const nextCount = currentCount + 1;
+        transaction.set(counterRef, { count: nextCount }, { merge: true });
+
+        return nextCount;
+    });
+
+    // Format as INCEPTA00001, INCEPTA00002, etc.
+    const paddedNumber = String(newCount).padStart(5, "0");
+    return `INCEPTA${paddedNumber}`;
+}
+
 // GET - Fetch all applications (admin only)
 export async function GET(request: NextRequest) {
     try {
@@ -57,11 +81,14 @@ export async function POST(request: NextRequest) {
 
         const data = await request.json();
 
+        // Generate sequential application ID
+        const inceptaId = await generateApplicationId(db);
+
         const applicationData = {
             ...data,
+            inceptaId,
             userId: user.uid,
             email: user.email,
-            status: "pending",
             paymentStatus: "unpaid",
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -72,6 +99,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             applicationId: docRef.id,
+            inceptaId,
             message: "Application submitted successfully"
         });
     } catch (error) {

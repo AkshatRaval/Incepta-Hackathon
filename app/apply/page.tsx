@@ -69,6 +69,66 @@ const steps = [
     { id: 6, title: "Payment", icon: CreditCard },
 ];
 
+// Reusable styles
+const inputStyle = {
+    width: "100%",
+    padding: "0.875rem 1rem",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "0.75rem",
+    color: "var(--text-primary)",
+    fontSize: "1rem",
+    outline: "none",
+};
+
+const labelStyle = {
+    fontSize: "0.875rem",
+    fontWeight: 600,
+    color: "var(--text-secondary)",
+    marginBottom: "0.5rem",
+    display: "block",
+};
+
+const cardStyle = {
+    background: "var(--bg-elevated)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "1.5rem",
+};
+
+const btnPrimaryStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.5rem",
+    padding: "0.875rem 1.5rem",
+    borderRadius: "0.75rem",
+    fontWeight: 600,
+    fontSize: "1rem",
+    background: "var(--gradient-primary)",
+    color: "#000",
+    border: "none",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
+};
+
+const btnSecondaryStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.5rem",
+    padding: "0.875rem 1.5rem",
+    borderRadius: "0.75rem",
+    fontWeight: 600,
+    fontSize: "1rem",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-default)",
+    color: "var(--text-primary)",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
+};
+
 function ApplyPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -79,7 +139,11 @@ function ApplyPageContent() {
     const [applicationId, setApplicationId] = useState<string | null>(null);
     const [hasExistingApp, setHasExistingApp] = useState(false);
     const [checkingExisting, setCheckingExisting] = useState(true);
+    const [transactionId, setTransactionId] = useState("");
+    const [paymentSubmitted, setPaymentSubmitted] = useState(false);
 
+    // UPI Payment Details - Update these with your actual UPI ID
+    const UPI_ID = process.env.NEXT_PUBLIC_UPI_ID || "your-upi-id@paytm";
     const {
         register,
         handleSubmit,
@@ -187,31 +251,36 @@ function ApplyPageContent() {
         }
     };
 
-    const handlePayment = async () => {
-        if (!user || !applicationId) return;
+    const handlePaymentSubmit = async () => {
+        if (!user || !applicationId || !transactionId.trim()) return;
         setIsSubmitting(true);
         try {
             const token = await user.getIdToken();
-            const res = await fetch("/api/payment/create-session", {
+            const res = await fetch("/api/payment/submit-upi", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ applicationId }),
+                body: JSON.stringify({ applicationId, transactionId: transactionId.trim() }),
             });
             const result = await res.json();
-            if (!res.ok) throw new Error(result.error || "Failed to create payment session");
-            if (result.url) window.location.href = result.url;
+            if (!res.ok) throw new Error(result.error || "Failed to submit payment");
+            setPaymentSubmitted(true);
         } catch (error) {
-            console.error("Error creating payment:", error);
-            alert(error instanceof Error ? error.message : "Failed to initiate payment");
+            console.error("Error submitting payment:", error);
+            alert(error instanceof Error ? error.message : "Failed to submit payment");
         } finally {
             setIsSubmitting(false);
         }
     };
 
+    const copyUpiId = () => {
+        navigator.clipboard.writeText(UPI_ID);
+        alert("UPI ID copied to clipboard!");
+    };
+
     if (loading || checkingExisting) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: "var(--accent)" }} />
             </div>
         );
     }
@@ -222,13 +291,16 @@ function ApplyPageContent() {
                 <NeuralBackground />
                 <div className="relative z-10 min-h-screen flex items-center justify-center px-6 pt-20">
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full">
-                        <div className="card-static p-10 text-center">
-                            <div className="w-20 h-20 rounded-2xl bg-[var(--bg-elevated)] flex items-center justify-center mx-auto mb-6">
-                                <Lock className="w-10 h-10 text-[var(--text-muted)]" />
+                        <div style={{ ...cardStyle, padding: "2.5rem", textAlign: "center" }}>
+                            <div
+                                className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                                style={{ background: "var(--bg-elevated)" }}
+                            >
+                                <Lock className="w-10 h-10" style={{ color: "var(--text-muted)" }} />
                             </div>
-                            <h2 className="text-2xl font-bold mb-3">Sign In Required</h2>
-                            <p className="text-[var(--text-muted)] mb-8">Please sign in to register for INCEPTA 2026</p>
-                            <Link href="/login" className="btn btn-primary">
+                            <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--text-primary)" }}>Sign In Required</h2>
+                            <p className="mb-8" style={{ color: "var(--text-muted)" }}>Please sign in to register for INCEPTA 2026</p>
+                            <Link href="/login" style={btnPrimaryStyle}>
                                 Sign In <ArrowRight className="w-4 h-4" />
                             </Link>
                         </div>
@@ -244,13 +316,16 @@ function ApplyPageContent() {
                 <NeuralBackground />
                 <div className="relative z-10 min-h-screen flex items-center justify-center px-6 pt-20">
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full">
-                        <div className="card-static p-10 text-center">
-                            <div className="w-20 h-20 rounded-2xl bg-[rgba(34,197,94,0.15)] flex items-center justify-center mx-auto mb-6">
-                                <Check className="w-10 h-10 text-[var(--accent)]" />
+                        <div style={{ ...cardStyle, padding: "2.5rem", textAlign: "center" }}>
+                            <div
+                                className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                                style={{ background: "rgba(34,197,94,0.15)" }}
+                            >
+                                <Check className="w-10 h-10" style={{ color: "var(--accent)" }} />
                             </div>
-                            <h2 className="text-2xl font-bold mb-3">Already Applied!</h2>
-                            <p className="text-[var(--text-muted)] mb-8">You have already submitted an application for INCEPTA 2026.</p>
-                            <Link href="/profile" className="btn btn-primary">
+                            <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--text-primary)" }}>Already Applied!</h2>
+                            <p className="mb-8" style={{ color: "var(--text-muted)" }}>You have already submitted an application for INCEPTA 2026.</p>
+                            <Link href="/profile" style={btnPrimaryStyle}>
                                 View Application Status <ArrowRight className="w-4 h-4" />
                             </Link>
                         </div>
@@ -264,15 +339,20 @@ function ApplyPageContent() {
         <>
             <NeuralBackground />
             <div className="relative z-10 min-h-screen py-24 px-6">
-                <div className="container max-w-3xl">
+                <div className="max-w-3xl mx-auto">
                     {/* Header */}
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-10">
-                        <span className="badge mb-4">
+                        <span
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4"
+                            style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.3)", color: "var(--accent)" }}
+                        >
                             <FileText className="w-4 h-4" />
                             <span>Application Form</span>
                         </span>
-                        <h1 className="text-3xl md:text-4xl font-bold mb-2">Register for <span className="text-gradient">INCEPTA 2026</span></h1>
-                        <p className="text-[var(--text-muted)]">Complete your application in a few steps</p>
+                        <h1 className="text-3xl md:text-4xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+                            Register for <span className="gradient-text">INCEPTA 2026</span>
+                        </h1>
+                        <p style={{ color: "var(--text-muted)" }}>Complete your application in a few steps</p>
                     </motion.div>
 
                     {/* Progress Steps */}
@@ -283,18 +363,28 @@ function ApplyPageContent() {
                                     <button
                                         onClick={() => step.id < currentStep && setCurrentStep(step.id)}
                                         disabled={step.id > currentStep}
-                                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${step.id === currentStep
-                                                ? "bg-[var(--accent)] text-white"
+                                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                                        style={{
+                                            background: step.id === currentStep
+                                                ? "var(--accent)"
                                                 : step.id < currentStep
-                                                    ? "bg-[rgba(34,197,94,0.2)] text-[var(--accent)]"
-                                                    : "bg-[var(--bg-elevated)] text-[var(--text-muted)]"
-                                            }`}
+                                                    ? "rgba(34,197,94,0.2)"
+                                                    : "var(--bg-elevated)",
+                                            color: step.id === currentStep
+                                                ? "#fff"
+                                                : step.id < currentStep
+                                                    ? "var(--accent)"
+                                                    : "var(--text-muted)",
+                                        }}
                                     >
                                         {step.id < currentStep ? <Check className="w-4 h-4" /> : <step.icon className="w-4 h-4" />}
                                         <span className="hidden sm:inline">{step.title}</span>
                                     </button>
                                     {index < steps.length - 1 && (
-                                        <div className={`w-6 h-0.5 ${step.id < currentStep ? "bg-[var(--accent)]" : "bg-[var(--border-subtle)]"}`} />
+                                        <div
+                                            className="w-6 h-0.5"
+                                            style={{ background: step.id < currentStep ? "var(--accent)" : "var(--border-subtle)" }}
+                                        />
                                     )}
                                 </div>
                             ))}
@@ -303,46 +393,48 @@ function ApplyPageContent() {
 
                     {/* Form */}
                     <form onSubmit={handleSubmit(onSubmit)}>
-                        <div className="card-static p-6 md:p-10">
-                            <h2 className="text-xl font-bold mb-6">{steps[currentStep - 1]?.title || "Payment"}</h2>
+                        <div style={{ ...cardStyle, padding: "1.5rem" }} className="md:p-10">
+                            <h2 className="text-xl font-bold mb-6" style={{ color: "var(--text-primary)" }}>
+                                {steps[currentStep - 1]?.title || "Payment"}
+                            </h2>
 
                             <AnimatePresence mode="wait">
                                 {/* Step 1: Personal */}
                                 {currentStep === 1 && (
                                     <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">First Name *</label>
-                                                <input {...register("firstName")} placeholder="John" className="input" />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>First Name *</label>
+                                                <input {...register("firstName")} placeholder="John" style={inputStyle} />
                                                 {errors.firstName && <p className="text-red-400 text-xs mt-1">{errors.firstName.message}</p>}
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">Last Name *</label>
-                                                <input {...register("lastName")} placeholder="Doe" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>Last Name *</label>
+                                                <input {...register("lastName")} placeholder="Doe" style={inputStyle} />
                                                 {errors.lastName && <p className="text-red-400 text-xs mt-1">{errors.lastName.message}</p>}
                                             </div>
                                         </div>
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">Email *</label>
-                                                <input {...register("email")} type="email" placeholder="john@example.com" className="input" disabled={!!user?.email} />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>Email *</label>
+                                                <input {...register("email")} type="email" placeholder="john@example.com" style={{ ...inputStyle, opacity: user?.email ? 0.6 : 1 }} disabled={!!user?.email} />
                                                 {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">Phone *</label>
-                                                <input {...register("phone")} placeholder="+91 9876543210" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>Phone *</label>
+                                                <input {...register("phone")} placeholder="+91 9876543210" style={inputStyle} />
                                                 {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone.message}</p>}
                                             </div>
                                         </div>
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">Date of Birth *</label>
-                                                <input {...register("dateOfBirth")} type="date" className="input" />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>Date of Birth *</label>
+                                                <input {...register("dateOfBirth")} type="date" style={inputStyle} />
                                                 {errors.dateOfBirth && <p className="text-red-400 text-xs mt-1">{errors.dateOfBirth.message}</p>}
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">Gender *</label>
-                                                <select {...register("gender")} className="input">
+                                            <div>
+                                                <label style={labelStyle}>Gender *</label>
+                                                <select {...register("gender")} style={inputStyle}>
                                                     <option value="">Select gender</option>
                                                     <option value="male">Male</option>
                                                     <option value="female">Female</option>
@@ -352,15 +444,15 @@ function ApplyPageContent() {
                                                 {errors.gender && <p className="text-red-400 text-xs mt-1">{errors.gender.message}</p>}
                                             </div>
                                         </div>
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">Country *</label>
-                                                <input {...register("country")} placeholder="India" className="input" />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>Country *</label>
+                                                <input {...register("country")} placeholder="India" style={inputStyle} />
                                                 {errors.country && <p className="text-red-400 text-xs mt-1">{errors.country.message}</p>}
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">City *</label>
-                                                <input {...register("city")} placeholder="Mumbai" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>City *</label>
+                                                <input {...register("city")} placeholder="Mumbai" style={inputStyle} />
                                                 {errors.city && <p className="text-red-400 text-xs mt-1">{errors.city.message}</p>}
                                             </div>
                                         </div>
@@ -370,9 +462,9 @@ function ApplyPageContent() {
                                 {/* Step 2: Education */}
                                 {currentStep === 2 && (
                                     <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div className="input-group">
-                                            <label className="input-label">Education Level *</label>
-                                            <select {...register("educationLevel")} className="input">
+                                        <div>
+                                            <label style={labelStyle}>Education Level *</label>
+                                            <select {...register("educationLevel")} style={inputStyle}>
                                                 <option value="">Select level</option>
                                                 <option value="high-school">High School</option>
                                                 <option value="undergraduate">Undergraduate</option>
@@ -382,20 +474,20 @@ function ApplyPageContent() {
                                             </select>
                                             {errors.educationLevel && <p className="text-red-400 text-xs mt-1">{errors.educationLevel.message}</p>}
                                         </div>
-                                        <div className="input-group">
-                                            <label className="input-label">Institution Name *</label>
-                                            <input {...register("institution")} placeholder="IIT Mumbai" className="input" />
+                                        <div>
+                                            <label style={labelStyle}>Institution Name *</label>
+                                            <input {...register("institution")} placeholder="IIT Mumbai" style={inputStyle} />
                                             {errors.institution && <p className="text-red-400 text-xs mt-1">{errors.institution.message}</p>}
                                         </div>
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">Field of Study *</label>
-                                                <input {...register("fieldOfStudy")} placeholder="Computer Science" className="input" />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>Field of Study *</label>
+                                                <input {...register("fieldOfStudy")} placeholder="Computer Science" style={inputStyle} />
                                                 {errors.fieldOfStudy && <p className="text-red-400 text-xs mt-1">{errors.fieldOfStudy.message}</p>}
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">Graduation Year *</label>
-                                                <select {...register("graduationYear")} className="input">
+                                            <div>
+                                                <label style={labelStyle}>Graduation Year *</label>
+                                                <select {...register("graduationYear")} style={inputStyle}>
                                                     <option value="">Select year</option>
                                                     {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((year) => (
                                                         <option key={year} value={year}>{year}</option>
@@ -404,9 +496,9 @@ function ApplyPageContent() {
                                                 {errors.graduationYear && <p className="text-red-400 text-xs mt-1">{errors.graduationYear.message}</p>}
                                             </div>
                                         </div>
-                                        <div className="input-group">
-                                            <label className="input-label">Coding Experience *</label>
-                                            <select {...register("experienceLevel")} className="input">
+                                        <div>
+                                            <label style={labelStyle}>Coding Experience *</label>
+                                            <select {...register("experienceLevel")} style={inputStyle}>
                                                 <option value="">Select experience</option>
                                                 <option value="beginner">Beginner (&lt; 1 year)</option>
                                                 <option value="intermediate">Intermediate (1-3 years)</option>
@@ -421,9 +513,9 @@ function ApplyPageContent() {
                                 {/* Step 3: Skills */}
                                 {currentStep === 3 && (
                                     <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div className="input-group">
-                                            <label className="input-label">Primary Role *</label>
-                                            <select {...register("primarySkill")} className="input">
+                                        <div>
+                                            <label style={labelStyle}>Primary Role *</label>
+                                            <select {...register("primarySkill")} style={inputStyle}>
                                                 <option value="">Select role</option>
                                                 <option value="frontend">Frontend Developer</option>
                                                 <option value="backend">Backend Developer</option>
@@ -437,28 +529,28 @@ function ApplyPageContent() {
                                             </select>
                                             {errors.primarySkill && <p className="text-red-400 text-xs mt-1">{errors.primarySkill.message}</p>}
                                         </div>
-                                        <div className="input-group">
-                                            <label className="input-label">Programming Languages *</label>
-                                            <input {...register("programmingLanguages")} placeholder="Python, JavaScript, Java" className="input" />
-                                            <p className="text-[var(--text-muted)] text-xs mt-1">Comma separated</p>
+                                        <div>
+                                            <label style={labelStyle}>Programming Languages *</label>
+                                            <input {...register("programmingLanguages")} placeholder="Python, JavaScript, Java" style={inputStyle} />
+                                            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Comma separated</p>
                                             {errors.programmingLanguages && <p className="text-red-400 text-xs mt-1">{errors.programmingLanguages.message}</p>}
                                         </div>
-                                        <div className="input-group">
-                                            <label className="input-label">Frameworks & Tools</label>
-                                            <input {...register("frameworks")} placeholder="React, Node.js, TensorFlow" className="input" />
+                                        <div>
+                                            <label style={labelStyle}>Frameworks & Tools</label>
+                                            <input {...register("frameworks")} placeholder="React, Node.js, TensorFlow" style={inputStyle} />
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div className="input-group">
-                                                <label className="input-label">GitHub URL</label>
-                                                <input {...register("github")} placeholder="github.com/you" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>GitHub URL</label>
+                                                <input {...register("github")} placeholder="github.com/you" style={inputStyle} />
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">LinkedIn URL</label>
-                                                <input {...register("linkedin")} placeholder="linkedin.com/in/you" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>LinkedIn URL</label>
+                                                <input {...register("linkedin")} placeholder="linkedin.com/in/you" style={inputStyle} />
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">Portfolio URL</label>
-                                                <input {...register("portfolio")} placeholder="yoursite.com" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>Portfolio URL</label>
+                                                <input {...register("portfolio")} placeholder="yoursite.com" style={inputStyle} />
                                             </div>
                                         </div>
                                     </motion.div>
@@ -467,9 +559,9 @@ function ApplyPageContent() {
                                 {/* Step 4: Team */}
                                 {currentStep === 4 && (
                                     <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div className="input-group">
-                                            <label className="input-label">Team Preference *</label>
-                                            <select {...register("teamPreference")} className="input">
+                                        <div>
+                                            <label style={labelStyle}>Team Preference *</label>
+                                            <select {...register("teamPreference")} style={inputStyle}>
                                                 <option value="">Select preference</option>
                                                 <option value="solo">Solo (Individual participation)</option>
                                                 <option value="have-team">I have a team</option>
@@ -478,20 +570,20 @@ function ApplyPageContent() {
                                             {errors.teamPreference && <p className="text-red-400 text-xs mt-1">{errors.teamPreference.message}</p>}
                                         </div>
                                         {teamPreference === "have-team" && (
-                                            <div className="input-group">
-                                                <label className="input-label">Team Name</label>
-                                                <input {...register("teamName")} placeholder="Team Awesome" className="input" />
+                                            <div>
+                                                <label style={labelStyle}>Team Name</label>
+                                                <input {...register("teamName")} placeholder="Team Awesome" style={inputStyle} />
                                             </div>
                                         )}
                                         {teamPreference === "looking-for-team" && (
-                                            <div className="p-4 rounded-xl bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.2)]">
-                                                <p className="text-[var(--accent)] font-medium mb-1">Looking for teammates!</p>
-                                                <p className="text-[var(--text-muted)] text-sm">You&apos;ll be added to our team formation channel on Discord.</p>
+                                            <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                                                <p className="font-medium mb-1" style={{ color: "var(--accent)" }}>Looking for teammates!</p>
+                                                <p className="text-sm" style={{ color: "var(--text-muted)" }}>You&apos;ll be added to our team formation channel on Discord.</p>
                                             </div>
                                         )}
-                                        <div className="p-5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                                            <h4 className="font-medium mb-3">Team Guidelines</h4>
-                                            <ul className="text-[var(--text-muted)] text-sm space-y-1">
+                                        <div className="p-5 rounded-xl" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
+                                            <h4 className="font-medium mb-3" style={{ color: "var(--text-primary)" }}>Team Guidelines</h4>
+                                            <ul className="text-sm space-y-1" style={{ color: "var(--text-muted)" }}>
                                                 <li>• Teams can have 1-4 members</li>
                                                 <li>• All team members must register individually</li>
                                                 <li>• Teams can be modified until March 10, 2026</li>
@@ -504,23 +596,23 @@ function ApplyPageContent() {
                                 {/* Step 5: Motivation */}
                                 {currentStep === 5 && (
                                     <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div className="input-group">
-                                            <label className="input-label">Why do you want to participate? *</label>
-                                            <textarea {...register("motivation")} placeholder="Tell us what excites you..." className="input h-32 resize-none" />
+                                        <div>
+                                            <label style={labelStyle}>Why do you want to participate? *</label>
+                                            <textarea {...register("motivation")} placeholder="Tell us what excites you..." style={{ ...inputStyle, height: "8rem", resize: "none" }} />
                                             {errors.motivation && <p className="text-red-400 text-xs mt-1">{errors.motivation.message}</p>}
                                         </div>
-                                        <div className="input-group">
-                                            <label className="input-label">Project Idea (optional)</label>
-                                            <textarea {...register("projectIdea")} placeholder="Briefly describe your idea..." className="input h-24 resize-none" />
+                                        <div>
+                                            <label style={labelStyle}>Project Idea (optional)</label>
+                                            <textarea {...register("projectIdea")} placeholder="Briefly describe your idea..." style={{ ...inputStyle, height: "6rem", resize: "none" }} />
                                         </div>
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">Previous Hackathons</label>
-                                                <input {...register("previousHackathons")} placeholder="HackMIT, ETHGlobal..." className="input" />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>Previous Hackathons</label>
+                                                <input {...register("previousHackathons")} placeholder="HackMIT, ETHGlobal..." style={inputStyle} />
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">How did you hear about us? *</label>
-                                                <select {...register("hearAboutUs")} className="input">
+                                            <div>
+                                                <label style={labelStyle}>How did you hear about us? *</label>
+                                                <select {...register("hearAboutUs")} style={inputStyle}>
                                                     <option value="">Select option</option>
                                                     <option value="social-media">Social Media</option>
                                                     <option value="friend">Friend/Colleague</option>
@@ -532,10 +624,10 @@ function ApplyPageContent() {
                                                 {errors.hearAboutUs && <p className="text-red-400 text-xs mt-1">{errors.hearAboutUs.message}</p>}
                                             </div>
                                         </div>
-                                        <div className="grid-2">
-                                            <div className="input-group">
-                                                <label className="input-label">T-Shirt Size *</label>
-                                                <select {...register("tShirtSize")} className="input">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>T-Shirt Size *</label>
+                                                <select {...register("tShirtSize")} style={inputStyle}>
                                                     <option value="">Select size</option>
                                                     <option value="xs">XS</option>
                                                     <option value="s">S</option>
@@ -546,24 +638,24 @@ function ApplyPageContent() {
                                                 </select>
                                                 {errors.tShirtSize && <p className="text-red-400 text-xs mt-1">{errors.tShirtSize.message}</p>}
                                             </div>
-                                            <div className="input-group">
-                                                <label className="input-label">Dietary Restrictions</label>
-                                                <input {...register("dietaryRestrictions")} placeholder="Vegetarian, Vegan..." className="input" />
+                                            <div>
+                                                <label style={labelStyle}>Dietary Restrictions</label>
+                                                <input {...register("dietaryRestrictions")} placeholder="Vegetarian, Vegan..." style={inputStyle} />
                                             </div>
                                         </div>
-                                        <div className="divider" />
+                                        <div className="h-px my-6" style={{ background: "var(--border-subtle)" }} />
                                         <div className="space-y-4">
                                             <label className="flex items-start gap-3 cursor-pointer">
-                                                <input type="checkbox" {...register("agreeCodeOfConduct")} className="mt-1 w-4 h-4 rounded border-[var(--border-default)] accent-[var(--accent)]" />
-                                                <span className="text-[var(--text-secondary)] text-sm">
-                                                    I agree to the <Link href="/conduct" className="text-[var(--accent)] hover:underline">Code of Conduct</Link>
+                                                <input type="checkbox" {...register("agreeCodeOfConduct")} className="mt-1 w-4 h-4 rounded accent-emerald-500" />
+                                                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                                                    I agree to the <Link href="/conduct" style={{ color: "var(--accent)" }}>Code of Conduct</Link>
                                                 </span>
                                             </label>
                                             {errors.agreeCodeOfConduct && <p className="text-red-400 text-xs">{errors.agreeCodeOfConduct.message}</p>}
                                             <label className="flex items-start gap-3 cursor-pointer">
-                                                <input type="checkbox" {...register("agreeTerms")} className="mt-1 w-4 h-4 rounded border-[var(--border-default)] accent-[var(--accent)]" />
-                                                <span className="text-[var(--text-secondary)] text-sm">
-                                                    I agree to the <Link href="/terms" className="text-[var(--accent)] hover:underline">Terms</Link> and <Link href="/privacy" className="text-[var(--accent)] hover:underline">Privacy Policy</Link>
+                                                <input type="checkbox" {...register("agreeTerms")} className="mt-1 w-4 h-4 rounded accent-emerald-500" />
+                                                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                                                    I agree to the <Link href="/terms" style={{ color: "var(--accent)" }}>Terms</Link> and <Link href="/privacy" style={{ color: "var(--accent)" }}>Privacy Policy</Link>
                                                 </span>
                                             </label>
                                             {errors.agreeTerms && <p className="text-red-400 text-xs">{errors.agreeTerms.message}</p>}
@@ -573,47 +665,120 @@ function ApplyPageContent() {
 
                                 {/* Step 6: Payment */}
                                 {currentStep === 6 && (
-                                    <motion.div key="step6" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="text-center py-8">
-                                        <div className="w-20 h-20 rounded-2xl bg-[rgba(34,197,94,0.15)] flex items-center justify-center mx-auto mb-6">
-                                            <Check className="w-10 h-10 text-[var(--accent)]" />
-                                        </div>
-                                        <h3 className="text-2xl font-bold mb-2">Application Submitted!</h3>
-                                        <p className="text-[var(--text-muted)] mb-8">Complete your payment to confirm your spot</p>
+                                    <motion.div key="step6" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="py-4">
+                                        {paymentSubmitted ? (
+                                            // Payment submitted - show confirmation
+                                            <div className="text-center py-8">
+                                                <div
+                                                    className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                                                    style={{ background: "rgba(34,197,94,0.15)" }}
+                                                >
+                                                    <Check className="w-10 h-10" style={{ color: "var(--accent)" }} />
+                                                </div>
+                                                <h3 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>Payment Submitted!</h3>
+                                                <p className="mb-4" style={{ color: "var(--text-muted)" }}>Your transaction ID: <strong style={{ color: "var(--accent)" }}>{transactionId}</strong></p>
+                                                <p className="mb-8" style={{ color: "var(--text-muted)" }}>We&apos;ll verify your payment within 24 hours and send you a confirmation email.</p>
+                                                <Link href="/profile" style={{ ...btnPrimaryStyle, padding: "1rem 2rem" }}>
+                                                    View Your Profile <ArrowRight className="w-4 h-4" />
+                                                </Link>
+                                            </div>
+                                        ) : (
+                                            // Payment form
+                                            <>
+                                                <div className="text-center mb-6">
+                                                    <div
+                                                        className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                                                        style={{ background: "rgba(34,197,94,0.15)" }}
+                                                    >
+                                                        <Check className="w-8 h-8" style={{ color: "var(--accent)" }} />
+                                                    </div>
+                                                    <h3 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>Application Submitted!</h3>
+                                                    <p style={{ color: "var(--text-muted)" }}>Complete payment to confirm your spot</p>
+                                                </div>
 
-                                        <div className="bg-[var(--bg-elevated)] rounded-xl p-6 mb-6 max-w-sm mx-auto">
-                                            <div className="flex justify-between mb-3">
-                                                <span className="text-[var(--text-muted)]">Registration Fee</span>
-                                                <span className="font-semibold">₹499</span>
-                                            </div>
-                                            <div className="flex justify-between mb-4 pb-4 border-b border-[var(--border-subtle)]">
-                                                <span className="text-[var(--text-muted)]">Processing Fee</span>
-                                                <span className="font-semibold">₹0</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="font-bold">Total</span>
-                                                <span className="font-bold text-[var(--accent)]">₹499</span>
-                                            </div>
-                                        </div>
+                                                {/* Amount Card */}
+                                                <div className="rounded-xl p-5 mb-6 max-w-md mx-auto" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
+                                                    <div className="flex justify-between mb-2">
+                                                        <span style={{ color: "var(--text-muted)" }}>Registration Fee</span>
+                                                        <span className="font-semibold" style={{ color: "var(--text-primary)" }}>₹60</span>
+                                                    </div>
+                                                    <div className="flex justify-between pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                                                        <span className="font-bold" style={{ color: "var(--text-primary)" }}>Total</span>
+                                                        <span className="font-bold text-xl" style={{ color: "var(--accent)" }}>₹60</span>
+                                                    </div>
+                                                </div>
 
-                                        <button onClick={handlePayment} disabled={isSubmitting} className="btn btn-primary btn-lg">
-                                            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Pay ₹499 <ArrowRight className="w-4 h-4" /></>}
-                                        </button>
+                                                {/* UPI Payment Instructions */}
+                                                <div className="rounded-xl p-5 mb-6 max-w-md mx-auto" style={{ background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
+                                                    <h4 className="font-semibold mb-4 text-center" style={{ color: "var(--text-primary)" }}>Pay via UPI</h4>
+
+                                                    <div className="space-y-4">
+                                                        <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                                                            <p className="mb-2"><strong>Step 1:</strong> Open any UPI app (GPay, PhonePe, Paytm, etc.)</p>
+                                                            <p className="mb-2"><strong>Step 2:</strong> Send ₹60 to the UPI ID below</p>
+                                                            <p><strong>Step 3:</strong> Enter your Transaction ID below</p>
+                                                        </div>
+
+                                                        <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}>
+                                                            <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>{UPI_ID}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={copyUpiId}
+                                                                className="text-sm px-3 py-1 rounded-lg"
+                                                                style={{ background: "var(--accent)", color: "#000", fontWeight: 600 }}
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Transaction ID Input */}
+                                                <div className="max-w-md mx-auto mb-6">
+                                                    <label style={labelStyle}>UPI Transaction ID / Reference Number *</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g., 401234567890"
+                                                        value={transactionId}
+                                                        onChange={(e) => setTransactionId(e.target.value)}
+                                                        style={inputStyle}
+                                                    />
+                                                    <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>Find this in your UPI app payment history</p>
+                                                </div>
+
+                                                <div className="text-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handlePaymentSubmit}
+                                                        disabled={isSubmitting || !transactionId.trim()}
+                                                        style={{ ...btnPrimaryStyle, padding: "1rem 2rem", fontSize: "1.125rem", opacity: (isSubmitting || !transactionId.trim()) ? 0.6 : 1 }}
+                                                    >
+                                                        {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Payment <ArrowRight className="w-4 h-4" /></>}
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
                                     </motion.div>
                                 )}
                             </AnimatePresence>
 
                             {/* Navigation */}
                             {currentStep < 6 && (
-                                <div className="flex justify-between mt-8 pt-6 border-t border-[var(--border-subtle)]">
-                                    <button type="button" onClick={prevStep} disabled={currentStep === 1} className="btn btn-secondary">
+                                <div className="flex justify-between mt-8 pt-6" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                                    <button
+                                        type="button"
+                                        onClick={prevStep}
+                                        disabled={currentStep === 1}
+                                        style={{ ...btnSecondaryStyle, opacity: currentStep === 1 ? 0.4 : 1 }}
+                                    >
                                         <ChevronLeft className="w-4 h-4" /> Back
                                     </button>
                                     {currentStep < 5 ? (
-                                        <button type="button" onClick={nextStep} className="btn btn-primary">
+                                        <button type="button" onClick={nextStep} style={btnPrimaryStyle}>
                                             Next <ChevronRight className="w-4 h-4" />
                                         </button>
                                     ) : (
-                                        <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+                                        <button type="submit" disabled={isSubmitting} style={{ ...btnPrimaryStyle, opacity: isSubmitting ? 0.6 : 1 }}>
                                             {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Application <ArrowRight className="w-4 h-4" /></>}
                                         </button>
                                     )}
@@ -629,7 +794,7 @@ function ApplyPageContent() {
 
 export default function ApplyPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" /></div>}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" style={{ color: "var(--accent)" }} /></div>}>
             <ApplyPageContent />
         </Suspense>
     );

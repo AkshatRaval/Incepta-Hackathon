@@ -6,12 +6,20 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import { NeuralBackground } from "@/components/effects/neural-background";
-import { ArrowRight, Loader2, Eye, EyeOff, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, Loader2, Eye, EyeOff, Sparkles, Zap, Check } from "lucide-react";
 
-export default function LoginPage() {
+const benefits = [
+    "9 days of intense building",
+    "Real-time mentorship",
+    "Industry workshops",
+    "₹1500 swag (Top 3)",
+];
+
+export default function SignupPage() {
     const router = useRouter();
-    const { user, signInWithGoogle, signInWithEmail } = useAuth();
+    const { user, signInWithGoogle, signUpWithEmail } = useAuth();
 
+    const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +36,11 @@ export default function LoginPage() {
     if (user) return null;
 
     const validateForm = () => {
+        if (!name.trim()) {
+            setError("Please enter your name");
+            return false;
+        }
+
         if (!email) {
             setError("Please enter your email");
             return false;
@@ -39,29 +52,34 @@ export default function LoginPage() {
         }
 
         if (!password) {
-            setError("Please enter your password");
+            setError("Please enter a password");
+            return false;
+        }
+
+        if (password.length < 6) {
+            setError("Password must be at least 6 characters");
             return false;
         }
 
         return true;
     };
 
-    const handleLogin = async () => {
+    const handleSignup = async () => {
         setError("");
         if (!validateForm()) return;
 
         setLoading(true);
 
         try {
-            await signInWithEmail(email, password);
-            router.push("/profile");
+            await signUpWithEmail(email, password, name);
+            router.push("/apply");
         } catch (err: unknown) {
             if (err instanceof Error) {
                 // Firebase error handling
-                if (err.message.includes("user-not-found") || err.message.includes("wrong-password") || err.message.includes("invalid-credential")) {
-                    setError("Invalid email or password");
-                } else if (err.message.includes("too-many-requests")) {
-                    setError("Too many attempts. Please try again later.");
+                if (err.message.includes("email-already-in-use")) {
+                    setError("An account with this email already exists");
+                } else if (err.message.includes("weak-password")) {
+                    setError("Password is too weak");
                 } else {
                     setError(err.message);
                 }
@@ -79,9 +97,9 @@ export default function LoginPage() {
 
         try {
             await signInWithGoogle();
-            router.push("/profile");
+            router.push("/apply");
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Failed to sign in with Google");
+            setError(err instanceof Error ? err.message : "Failed to sign up with Google");
         } finally {
             setLoading(false);
         }
@@ -110,27 +128,50 @@ export default function LoginPage() {
                             </div>
 
                             <h1 className="text-5xl font-black leading-tight mb-6" style={{ color: "var(--text-primary)" }}>
-                                9 Days.<br />
-                                <span className="gradient-text">3 Rounds.</span><br />
-                                1 Champion.
+                                Join the<br />
+                                <span className="gradient-text">Engineering</span><br />
+                                Gauntlet.
                             </h1>
 
                             <p className="text-lg mb-8" style={{ color: "var(--text-secondary)" }}>
-                                Join 200+ engineers in the ultimate engineering gauntlet. March 5–14, 2026.
+                                Register now and prove yourself among 200+ talented engineers.
                             </p>
 
-                            <div className="flex gap-6">
-                                {[
-                                    { value: "₹60", label: "Entry" },
-                                    { value: "9", label: "Days" },
-                                    { value: "60%", label: "Cut" },
-                                ].map((stat, i) => (
-                                    <div key={i}>
-                                        <div className="text-2xl font-black" style={{ color: "var(--accent)" }}>{stat.value}</div>
-                                        <div className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{stat.label}</div>
-                                    </div>
+                            {/* Benefits */}
+                            <div className="space-y-3">
+                                {benefits.map((benefit, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.4 + i * 0.1 }}
+                                        className="flex items-center gap-3"
+                                    >
+                                        <div
+                                            className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                                            style={{ background: "rgba(52, 211, 153, 0.15)", border: "1px solid rgba(52, 211, 153, 0.3)" }}
+                                        >
+                                            <Check className="w-3 h-3" style={{ color: "var(--accent)" }} />
+                                        </div>
+                                        <span style={{ color: "var(--text-secondary)" }}>{benefit}</span>
+                                    </motion.div>
                                 ))}
                             </div>
+
+                            {/* Price Tag */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.8 }}
+                                className="mt-10 inline-flex items-center gap-4 px-6 py-4 rounded-2xl"
+                                style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)" }}
+                            >
+                                <div className="text-3xl font-black" style={{ color: "var(--accent)" }}>₹60</div>
+                                <div>
+                                    <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Entry Fee Only</div>
+                                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>March 5–14, 2026</div>
+                                </div>
+                            </motion.div>
                         </motion.div>
                     </div>
                 </div>
@@ -165,10 +206,10 @@ export default function LoginPage() {
                             {/* Header */}
                             <div className="text-center mb-8">
                                 <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>
-                                    Welcome Back
+                                    Create Account
                                 </h2>
                                 <p style={{ color: "var(--text-muted)" }} className="text-sm">
-                                    Sign in to continue to INCEPTA 2026
+                                    Sign up to register for INCEPTA 2026
                                 </p>
                             </div>
 
@@ -211,12 +252,28 @@ export default function LoginPage() {
                             {/* Form */}
                             <div className="space-y-4">
                                 <div>
+                                    <label className="block text-sm font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Display Name</label>
+                                    <input
+                                        type="text"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        placeholder="John Doe"
+                                        className="w-full px-4 py-3 rounded-xl outline-none transition-all"
+                                        style={{
+                                            background: "var(--bg-elevated)",
+                                            border: "1px solid var(--border-default)",
+                                            color: "var(--text-primary)",
+                                        }}
+                                    />
+                                </div>
+
+                                <div>
                                     <label className="block text-sm font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Email Address</label>
                                     <input
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="you@example.com"
+                                        placeholder="john@example.com"
                                         className="w-full px-4 py-3 rounded-xl outline-none transition-all"
                                         style={{
                                             background: "var(--bg-elevated)",
@@ -233,7 +290,7 @@ export default function LoginPage() {
                                             type={showPassword ? "text" : "password"}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            placeholder="••••••••"
+                                            placeholder="Min 6 characters"
                                             className="w-full px-4 py-3 pr-12 rounded-xl outline-none transition-all"
                                             style={{
                                                 background: "var(--bg-elevated)",
@@ -255,7 +312,7 @@ export default function LoginPage() {
 
                             {/* Submit Button */}
                             <button
-                                onClick={handleLogin}
+                                onClick={handleSignup}
                                 disabled={loading}
                                 className="w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] mt-6"
                                 style={{
@@ -264,14 +321,14 @@ export default function LoginPage() {
                                     opacity: loading ? 0.7 : 1,
                                 }}
                             >
-                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Sign In <ArrowRight className="w-4 h-4" /></>}
+                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Create Account <ArrowRight className="w-4 h-4" /></>}
                             </button>
 
-                            {/* Sign Up Link */}
-                            <p className="text-center mt-8 text-sm" style={{ color: "var(--text-muted)" }}>
-                                Don&apos;t have an account?{" "}
-                                <Link href="/signup" className="font-semibold transition-colors" style={{ color: "var(--accent)" }}>
-                                    Sign up
+                            {/* Sign In Link */}
+                            <p className="text-center mt-6 text-sm" style={{ color: "var(--text-muted)" }}>
+                                Already have an account?{" "}
+                                <Link href="/login" className="font-semibold transition-colors" style={{ color: "var(--accent)" }}>
+                                    Sign in
                                 </Link>
                             </p>
                         </div>
