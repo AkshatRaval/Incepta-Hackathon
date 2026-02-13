@@ -102,6 +102,7 @@ function ApplyPageContent() {
     const [transactionId, setTransactionId] = useState("");
     const [paymentSubmitted, setPaymentSubmitted] = useState(false);
     const [checkError, setCheckError] = useState(false);
+    const [showManualPayment, setShowManualPayment] = useState(false);
 
     // Payment Link
     const PAYMENT_LINK = process.env.NEXT_PUBLIC_PAYMENT_LINK || "https://razorpay.me/@akshatraval";
@@ -192,7 +193,47 @@ function ApplyPageContent() {
 
     useEffect(() => {
         if (searchParams.get("cancelled") === "true") setCurrentStep(7);
+
+        // Handle Instamojo Redirect
+        const paymentId = searchParams.get("payment_id");
+        const paymentStatus = searchParams.get("payment_status");
+
+        if (paymentId && (paymentStatus === "Credit" || paymentStatus === "credit")) {
+            setTransactionId(paymentId);
+            setPaymentSubmitted(true);
+            setCurrentStep(7);
+            // Optionally: Auto-trigger verification handling here if needed
+        }
     }, [searchParams]);
+
+    const handlePaymentInitiation = async () => {
+        setIsSubmitting(true);
+        try {
+            const res = await fetch("/api/payment/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    purpose: "INCEPTA Hackathon Registration",
+                    amount: 60,
+                    buyer_name: `${getValues("firstName")} ${getValues("lastName")}`,
+                    email: getValues("email"),
+                    phone: getValues("phone"),
+                    redirect_url: `${window.location.origin}/apply`
+                })
+            });
+            const data = await res.json();
+            if (data.success && data.longurl) {
+                window.location.href = data.longurl;
+            } else {
+                alert("Payment initiation failed: " + (data.error || "Unknown error"));
+                setIsSubmitting(false);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Network error starting payment.");
+            setIsSubmitting(false);
+        }
+    };
 
     const validateStep = async (step: number) => {
         const fieldsToValidate: Record<number, (keyof FormData)[]> = {
@@ -389,11 +430,11 @@ function ApplyPageContent() {
                                             <div
                                                 key={step.id}
                                                 className={`flex items-center gap-3 p-3 rounded-lg transition-all ${isActive ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" :
-                                                        isCompleted ? "text-emerald-400" : "text-slate-500"
+                                                    isCompleted ? "text-emerald-400" : "text-slate-500"
                                                     }`}
                                             >
                                                 <div className={`w-6 h-6 rounded flex items-center justify-center transition-all ${isActive ? "bg-cyan-500/20" :
-                                                        isCompleted ? "bg-emerald-500/20" : "bg-white/5"
+                                                    isCompleted ? "bg-emerald-500/20" : "bg-white/5"
                                                     }`}>
                                                     {isCompleted ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
                                                 </div>
@@ -412,8 +453,8 @@ function ApplyPageContent() {
                                     <div
                                         key={step.id}
                                         className={`flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-bold whitespace-nowrap ${step.id === currentStep ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" :
-                                                step.id < currentStep ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
-                                                    "bg-white/5 border-white/10 text-slate-500"
+                                            step.id < currentStep ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
+                                                "bg-white/5 border-white/10 text-slate-500"
                                             }`}
                                     >
                                         <span>{step.id}. {step.title}</span>
@@ -732,32 +773,61 @@ function ApplyPageContent() {
                                                             <div className="space-y-4">
                                                                 <h4 className="font-bold text-white flex items-center gap-2">
                                                                     <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs">1</div>
-                                                                    Pay via Razorpay
+                                                                    Pay Securely
                                                                 </h4>
-                                                                <a
-                                                                    href={PAYMENT_LINK}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="block w-full py-4 bg-[#3395ff] hover:bg-[#2884e6] text-white font-bold rounded-xl text-center transition-all shadow-lg shadow-blue-500/20"
+
+                                                                <p className="text-sm text-slate-400">
+                                                                    You will be redirected to Instamojo to complete the payment of <strong>₹60</strong>.
+                                                                </p>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handlePaymentInitiation}
+                                                                    disabled={isSubmitting}
+                                                                    className="block w-full py-4 bg-[#3395ff] hover:bg-[#2884e6] text-white font-bold rounded-xl text-center transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                                                 >
-                                                                    Pay Now with Razorpay
-                                                                </a>
+                                                                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Pay Now with Instamojo"}
+                                                                </button>
                                                             </div>
 
-                                                            <div className="space-y-4 pt-4 border-t border-white/10">
-                                                                <h4 className="font-bold text-white flex items-center gap-2">
-                                                                    <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs">2</div>
-                                                                    Enter Transaction ID
-                                                                </h4>
-                                                                <Input
-                                                                    value={transactionId}
-                                                                    onChange={(e) => setTransactionId(e.target.value)}
-                                                                    placeholder="Eg. pay_M1N3L7k..."
-                                                                />
-                                                                <p className="text-xs text-slate-500">
-                                                                    Paste the Payment ID / Transaction ID from your Razorpay receipt.
-                                                                </p>
-                                                            </div>
+                                                            {/* Hidden Transaction ID field for manual override if needed */}
+                                                            {!paymentSubmitted && (
+                                                                <div className="pt-8 mt-8 border-t border-white/5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setShowManualPayment(!showManualPayment)}
+                                                                        className="text-xs text-slate-500 hover:text-slate-300 underline"
+                                                                    >
+                                                                        Verify manually with Transaction ID?
+                                                                    </button>
+
+                                                                    {showManualPayment && (
+                                                                        <div className="space-y-4 mt-4 animate-in fade-in slide-in-from-top-2">
+                                                                            <h4 className="font-bold text-white flex items-center gap-2">
+                                                                                Enter Transaction ID Manually
+                                                                            </h4>
+                                                                            <Input
+                                                                                value={transactionId}
+                                                                                onChange={(e) => setTransactionId(e.target.value)}
+                                                                                placeholder="Eg. MOJO8a01N05..."
+                                                                            />
+                                                                            <p className="text-xs text-slate-500">
+                                                                                Paste the Payment ID from your Instamojo receipt.
+                                                                            </p>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={handlePaymentSubmit} // Calls the manual submission logic
+                                                                                disabled={!transactionId || isSubmitting}
+                                                                                className="w-full py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all disabled:opacity-50"
+                                                                            >
+                                                                                Verify Transaction ID
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+
 
                                                             <button
                                                                 type="button"

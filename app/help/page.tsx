@@ -50,13 +50,13 @@ export default function HelpPage() {
                             number={2}
                             title="Pay Registration Fee"
                             icon={CreditCard}
-                            desc="Click the Razorpay payment link. Pay the ₹60 fee via UPI, Card, or Netbanking. IMPORTANT: Note down your Transaction ID / UPI Reference Number."
+                            desc="Click the 'Pay Now' button. You will be automatically redirected to Instamojo. Complete the payment securely."
                         >
                             <div className="aspect-video w-full rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-slate-500">
                                 {/* Placeholder for Screenshot */}
                                 <div className="text-center">
                                     <CreditCard className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                    <span className="text-sm">Screenshot: Leading to Razorpay</span>
+                                    <span className="text-sm">Screenshot: Secure Redirect</span>
                                 </div>
                             </div>
                         </Step>
