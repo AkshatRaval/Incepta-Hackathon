@@ -108,6 +108,13 @@ export default function SignupPage() {
     return (
         <>
             <NeuralBackground />
+            <Link
+                href="/"
+                className="fixed top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium text-slate-400 hover:text-white backdrop-blur-md"
+            >
+                <ArrowRight className="w-4 h-4 rotate-180" />
+                Back to Home
+            </Link>
             <div className="relative z-10 min-h-screen flex">
                 {/* Left Side - Branding */}
                 <div className="hidden lg:flex lg:w-1/2 relative items-center justify-center p-12">

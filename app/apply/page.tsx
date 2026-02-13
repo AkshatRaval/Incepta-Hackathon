@@ -23,6 +23,9 @@ import {
     Lock,
     ArrowRight,
     FileText,
+    AlertCircle,
+    Info,
+    MessageSquare // Added for Discord step icon
 } from "lucide-react";
 import {
     Select,
@@ -31,17 +34,24 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { db } from "@/lib/firebase"; // Ensure this import exists or use API
 
 const formSchema = z.object({
     firstName: z.string().min(2, "First name must be at least 2 characters"),
     lastName: z.string().min(2, "Last name must be at least 2 characters"),
     email: z.string().email("Invalid email address"),
     phone: z.string().min(10, "Phone number must be at least 10 digits"),
-    discord: z.string().min(1, "Discord handle is required"),
     dateOfBirth: z.string().min(1, "Date of birth is required"),
     gender: z.string().min(1, "Please select your gender"),
     country: z.string().min(1, "Country is required"),
     city: z.string().min(1, "City is required"),
+
+    // Discord Fields
+    discord: z.string().min(1, "Discord username is required"),
+    discordId: z.string().min(1, "Discord User ID is required"),
+    discordAvailability: z.string().min(1, "Please select your availability"),
+    timezone: z.string().min(1, "Timezone is required"),
+
     educationLevel: z.string().min(1, "Education level is required"),
     institution: z.string().min(2, "Institution name is required"),
     fieldOfStudy: z.string().min(2, "Field of study is required"),
@@ -68,74 +78,16 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+// Updated Steps Array - 7 Steps
 const steps = [
     { id: 1, title: "Personal", icon: User },
-    { id: 2, title: "Education", icon: GraduationCap },
-    { id: 3, title: "Skills", icon: Code },
-    { id: 4, title: "Team", icon: Users },
-    { id: 5, title: "Motivation", icon: Heart },
-    { id: 6, title: "Payment", icon: CreditCard },
+    { id: 2, title: "Discord", icon: MessageSquare }, // New Step
+    { id: 3, title: "Education", icon: GraduationCap },
+    { id: 4, title: "Skills", icon: Code },
+    { id: 5, title: "Team", icon: Users },
+    { id: 6, title: "Motivation", icon: Heart },
+    { id: 7, title: "Payment", icon: CreditCard },
 ];
-
-// Reusable styles
-const inputStyle = {
-    width: "100%",
-    padding: "0.875rem 1rem",
-    background: "var(--bg-elevated)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "0.75rem",
-    color: "var(--text-primary)",
-    fontSize: "1rem",
-    outline: "none",
-};
-
-const labelStyle = {
-    fontSize: "0.875rem",
-    fontWeight: 600,
-    color: "var(--text-secondary)",
-    marginBottom: "0.5rem",
-    display: "block",
-};
-
-const cardStyle = {
-    background: "var(--bg-elevated)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    border: "1px solid var(--border-default)",
-    borderRadius: "1.5rem",
-};
-
-const btnPrimaryStyle = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.5rem",
-    padding: "0.875rem 1.5rem",
-    borderRadius: "0.75rem",
-    fontWeight: 600,
-    fontSize: "1rem",
-    background: "var(--gradient-primary)",
-    color: "#000",
-    border: "none",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-};
-
-const btnSecondaryStyle = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.5rem",
-    padding: "0.875rem 1.5rem",
-    borderRadius: "0.75rem",
-    fontWeight: 600,
-    fontSize: "1rem",
-    background: "var(--bg-elevated)",
-    border: "1px solid var(--border-default)",
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-};
 
 function ApplyPageContent() {
     const router = useRouter();
@@ -149,9 +101,11 @@ function ApplyPageContent() {
     const [checkingExisting, setCheckingExisting] = useState(true);
     const [transactionId, setTransactionId] = useState("");
     const [paymentSubmitted, setPaymentSubmitted] = useState(false);
+    const [checkError, setCheckError] = useState(false);
 
     // Payment Link
     const PAYMENT_LINK = process.env.NEXT_PUBLIC_PAYMENT_LINK || "https://razorpay.me/@akshatraval";
+
     const {
         register,
         control,
@@ -166,7 +120,6 @@ function ApplyPageContent() {
             agreeCodeOfConduct: false,
             agreeTerms: false,
             lookingForTeammates: false,
-            // Ensure empty strings for Select components to avoid uncontrolled/controlled warnings
             gender: "",
             educationLevel: "",
             graduationYear: "",
@@ -175,44 +128,57 @@ function ApplyPageContent() {
             teamPreference: "",
             hearAboutUs: "",
             tShirtSize: "",
+            discordAvailability: "",
+            timezone: "",
         },
     });
 
     const teamPreference = watch("teamPreference");
 
     useEffect(() => {
+        let isMounted = true;
         const checkExisting = async () => {
             if (!user) {
-                setCheckingExisting(false);
+                if (isMounted) setCheckingExisting(false);
                 return;
             }
             try {
-                // Short timeout to prevent infinite loading feel if API lags
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
+                // Using a longer timeout and handling abort to avoid "Timeout" crashes
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
                 const token = await user.getIdToken();
-                const fetchPromise = fetch("/api/applications/me", {
+                const res = await fetch("/api/applications/me", {
                     headers: { Authorization: `Bearer ${token}` },
+                    signal: controller.signal
                 });
-
-                const res = await Promise.race([fetchPromise, timeoutPromise]) as Response;
+                clearTimeout(timeoutId);
 
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.application) {
+                    if (data.application && isMounted) {
                         setHasExistingApp(true);
                         setApplicationId(data.application.id);
                     }
                 }
-            } catch (error) {
-                console.error("Error checking existing app:", error);
+                // Any other result (404 etc) just means no app, which is fine
+            } catch (error: any) {
+                console.warn("Check existing app failed or timed out:", error);
+                if (error.name === 'AbortError') {
+                    // Just proceed, assume no app for now to let user try. 
+                    // Or show a retry button if it's critical. 
+                    // For now, we fail open but log it.
+                }
+                if (isMounted) setCheckError(true);
             } finally {
-                setCheckingExisting(false);
+                if (isMounted) setCheckingExisting(false);
             }
         };
+
         if (!loading) {
             checkExisting();
         }
+        return () => { isMounted = false; };
     }, [user, loading]);
 
     useEffect(() => {
@@ -225,16 +191,17 @@ function ApplyPageContent() {
     }, [user, setValue]);
 
     useEffect(() => {
-        if (searchParams.get("cancelled") === "true") setCurrentStep(6);
+        if (searchParams.get("cancelled") === "true") setCurrentStep(7);
     }, [searchParams]);
 
     const validateStep = async (step: number) => {
         const fieldsToValidate: Record<number, (keyof FormData)[]> = {
-            1: ["firstName", "lastName", "email", "phone", "discord", "dateOfBirth", "gender", "country", "city"],
-            2: ["educationLevel", "institution", "fieldOfStudy", "graduationYear", "experienceLevel"],
-            3: ["primarySkill", "programmingLanguages", "github", "linkedin", "portfolio"],
-            4: ["teamPreference"],
-            5: ["motivation", "hearAboutUs", "tShirtSize", "agreeCodeOfConduct", "agreeTerms"],
+            1: ["firstName", "lastName", "email", "phone", "dateOfBirth", "gender", "country", "city"],
+            2: ["discord", "discordId", "discordAvailability", "timezone"], // New Discord Step validation
+            3: ["educationLevel", "institution", "fieldOfStudy", "graduationYear", "experienceLevel"],
+            4: ["primarySkill", "programmingLanguages", "github", "linkedin", "portfolio"],
+            5: ["teamPreference"],
+            6: ["motivation", "hearAboutUs", "tShirtSize", "agreeCodeOfConduct", "agreeTerms"],
         };
         const fields = fieldsToValidate[step];
         if (fields) return trigger(fields);
@@ -243,11 +210,17 @@ function ApplyPageContent() {
 
     const nextStep = async () => {
         const isValid = await validateStep(currentStep);
-        if (isValid && currentStep < 6) setCurrentStep(currentStep + 1);
+        if (isValid && currentStep < 7) {
+            setCurrentStep(currentStep + 1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     };
 
     const prevStep = () => {
-        if (currentStep > 1) setCurrentStep(currentStep - 1);
+        if (currentStep > 1) {
+            setCurrentStep(currentStep - 1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     };
 
     const onSubmit = async (data: FormData) => {
@@ -263,12 +236,15 @@ function ApplyPageContent() {
             const result = await res.json();
             if (!res.ok) throw new Error(result.error || "Failed to submit application");
             setApplicationId(result.applicationId);
-            setCurrentStep(6);
-            await fetch("/api/email/send-confirmation", {
+            setCurrentStep(7);
+
+            // Try sending confirmation email, but don't block UI if it fails
+            fetch("/api/email/send-confirmation", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ applicationId: result.applicationId, applicantName: data.firstName, applicantEmail: data.email }),
-            });
+            }).catch(e => console.error("Email send failed", e));
+
         } catch (error) {
             console.error("Error submitting application:", error);
             alert(error instanceof Error ? error.message : "Failed to submit application");
@@ -300,9 +276,12 @@ function ApplyPageContent() {
 
     if (loading || checkingExisting) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: "var(--accent)" }} />
-            </div>
+            <>
+                <NeuralBackground />
+                <div className="min-h-screen flex items-center justify-center relative z-10">
+                    <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+                </div>
+            </>
         );
     }
 
@@ -310,19 +289,26 @@ function ApplyPageContent() {
         return (
             <>
                 <NeuralBackground />
-                <div className="relative z-10 min-h-screen flex items-center justify-center px-6 pt-20">
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full">
-                        <div style={{ ...cardStyle, padding: "2.5rem", textAlign: "center" }}>
-                            <div
-                                className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
-                                style={{ background: "var(--bg-elevated)" }}
-                            >
-                                <Lock className="w-10 h-10" style={{ color: "var(--text-muted)" }} />
+                <Link
+                    href="/"
+                    className="fixed top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium text-slate-400 hover:text-white backdrop-blur-md"
+                >
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                    Back to Home
+                </Link>
+                <div className="relative z-10 min-h-screen flex items-center justify-center px-4">
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full">
+                        <div className="p-8 md:p-12 rounded-3xl bg-black/40 backdrop-blur-xl border border-white/10 text-center shadow-2xl">
+                            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/20">
+                                <Lock className="w-10 h-10 text-cyan-400" />
                             </div>
-                            <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--text-primary)" }}>Sign In Required</h2>
-                            <p className="mb-8" style={{ color: "var(--text-muted)" }}>Please sign in to register for INCEPTA 2026</p>
-                            <Link href="/login" style={btnPrimaryStyle}>
-                                Sign In <ArrowRight className="w-4 h-4" />
+                            <h2 className="text-2xl font-bold mb-3 text-white">Authentication Required</h2>
+                            <p className="mb-8 text-slate-400">Please sign in to access the application portal for INCEPTA 2026.</p>
+                            <Link
+                                href="/login"
+                                className="inline-flex items-center justify-center w-full py-4 rounded-xl font-bold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all"
+                            >
+                                Sign In <ArrowRight className="w-5 h-5 ml-2" />
                             </Link>
                         </div>
                     </motion.div>
@@ -335,19 +321,26 @@ function ApplyPageContent() {
         return (
             <>
                 <NeuralBackground />
-                <div className="relative z-10 min-h-screen flex items-center justify-center px-6 pt-20">
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full">
-                        <div style={{ ...cardStyle, padding: "2.5rem", textAlign: "center" }}>
-                            <div
-                                className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
-                                style={{ background: "rgba(34,197,94,0.15)" }}
-                            >
-                                <Check className="w-10 h-10" style={{ color: "var(--accent)" }} />
+                <Link
+                    href="/"
+                    className="fixed top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium text-slate-400 hover:text-white backdrop-blur-md"
+                >
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                    Back to Home
+                </Link>
+                <div className="relative z-10 min-h-screen flex items-center justify-center px-4">
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full">
+                        <div className="p-8 md:p-12 rounded-3xl bg-black/40 backdrop-blur-xl border border-white/10 text-center shadow-2xl">
+                            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 bg-emerald-500/20 border border-emerald-500/20">
+                                <Check className="w-10 h-10 text-emerald-400" />
                             </div>
-                            <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--text-primary)" }}>Already Applied!</h2>
-                            <p className="mb-8" style={{ color: "var(--text-muted)" }}>You have already submitted an application for INCEPTA 2026.</p>
-                            <Link href="/profile" style={btnPrimaryStyle}>
-                                View Application Status <ArrowRight className="w-4 h-4" />
+                            <h2 className="text-2xl font-bold mb-3 text-white">Application Received!</h2>
+                            <p className="mb-8 text-slate-400">You have already submitted your application. Track your status on your profile.</p>
+                            <Link
+                                href="/profile"
+                                className="inline-flex items-center justify-center w-full py-4 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all"
+                            >
+                                Go to Profile <ArrowRight className="w-5 h-5 ml-2" />
                             </Link>
                         </div>
                     </motion.div>
@@ -359,237 +352,238 @@ function ApplyPageContent() {
     return (
         <>
             <NeuralBackground />
-            <div className="relative z-10 min-h-screen py-24 px-6">
-                <div className="max-w-3xl mx-auto">
-                    {/* Header */}
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-10">
-                        <span
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4"
-                            style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.3)", color: "var(--accent)" }}
-                        >
-                            <FileText className="w-4 h-4" />
-                            <span>Application Form</span>
-                        </span>
-                        <h1 className="text-3xl md:text-4xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>
-                            Register for <span className="gradient-text">INCEPTA 2026</span>
-                        </h1>
-                        <p style={{ color: "var(--text-muted)" }}>Complete your application in a few steps</p>
-                    </motion.div>
+            <Link
+                href="/"
+                className="fixed top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium text-slate-400 hover:text-white backdrop-blur-md"
+            >
+                <ArrowRight className="w-4 h-4 rotate-180" />
+                Back to Home
+            </Link>
 
-                    {/* Progress Steps */}
-                    <div className="flex justify-center mb-10 overflow-x-auto">
-                        <div className="flex items-center gap-1">
-                            {steps.map((step, index) => (
-                                <div key={step.id} className="flex items-center">
-                                    <button
-                                        onClick={() => step.id < currentStep && setCurrentStep(step.id)}
-                                        disabled={step.id > currentStep}
-                                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-                                        style={{
-                                            background: step.id === currentStep
-                                                ? "var(--accent)"
-                                                : step.id < currentStep
-                                                    ? "rgba(34,197,94,0.2)"
-                                                    : "var(--bg-elevated)",
-                                            color: step.id === currentStep
-                                                ? "#fff"
-                                                : step.id < currentStep
-                                                    ? "var(--accent)"
-                                                    : "var(--text-muted)",
-                                        }}
-                                    >
-                                        {step.id < currentStep ? <Check className="w-4 h-4" /> : <step.icon className="w-4 h-4" />}
-                                        <span className="hidden sm:inline">{step.title}</span>
-                                    </button>
-                                    {index < steps.length - 1 && (
-                                        <div
-                                            className="w-6 h-0.5"
-                                            style={{ background: step.id < currentStep ? "var(--accent)" : "var(--border-subtle)" }}
-                                        />
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+            <div className="relative z-10 min-h-screen py-24 px-4 sm:px-6">
+                <motion.div
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="max-w-5xl mx-auto"
+                >
+                    {/* Header */}
+                    <div className="text-center mb-12">
+                        <h1 className="text-4xl md:text-5xl font-black mb-4 text-white tracking-tight">
+                            The <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-600">Gauntlet</span> Awaits
+                        </h1>
+                        <p className="text-slate-400 text-lg max-w-2xl mx-auto">
+                            Complete your registration profile. Precision matters.
+                        </p>
                     </div>
 
-                    {/* Form */}
-                    <form onSubmit={handleSubmit(onSubmit)}>
-                        <div style={{ ...cardStyle, padding: "1.5rem" }} className="md:p-10">
-                            <h2 className="text-xl font-bold mb-6" style={{ color: "var(--text-primary)" }}>
-                                {steps[currentStep - 1]?.title || "Payment"}
-                            </h2>
+                    <div className="flex flex-col lg:flex-row gap-8">
+                        {/* Sidebar Progress (Desktop) */}
+                        <div className="hidden lg:block w-64 shrink-0">
+                            <div className="sticky top-24 p-6 rounded-2xl bg-black/40 backdrop-blur-xl border border-white/10">
+                                <div className="space-y-1">
+                                    {steps.map((step, index) => {
+                                        const isActive = step.id === currentStep;
+                                        const isCompleted = step.id < currentStep;
+                                        const Icon = step.icon;
+                                        return (
+                                            <div
+                                                key={step.id}
+                                                className={`flex items-center gap-3 p-3 rounded-lg transition-all ${isActive ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" :
+                                                        isCompleted ? "text-emerald-400" : "text-slate-500"
+                                                    }`}
+                                            >
+                                                <div className={`w-6 h-6 rounded flex items-center justify-center transition-all ${isActive ? "bg-cyan-500/20" :
+                                                        isCompleted ? "bg-emerald-500/20" : "bg-white/5"
+                                                    }`}>
+                                                    {isCompleted ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
+                                                </div>
+                                                <span className="font-semibold text-sm">{step.title}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
 
-                            <AnimatePresence mode="wait">
-                                {/* Step 1: Personal */}
-                                {currentStep === 1 && (
-                                    <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>First Name *</label>
-                                                <input {...register("firstName")} placeholder="John" style={inputStyle} />
-                                                {errors.firstName && <p className="text-red-400 text-xs mt-1">{errors.firstName.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Last Name *</label>
-                                                <input {...register("lastName")} placeholder="Doe" style={inputStyle} />
-                                                {errors.lastName && <p className="text-red-400 text-xs mt-1">{errors.lastName.message}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>Email *</label>
-                                                <input {...register("email")} type="email" placeholder="john@example.com" style={{ ...inputStyle, opacity: user?.email ? 0.6 : 1 }} disabled={!!user?.email} />
-                                                {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Phone *</label>
-                                                <input {...register("phone")} placeholder="+91 9876543210" style={inputStyle} />
-                                                {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone.message}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>Discord Handle *</label>
-                                                <input {...register("discord")} placeholder="username#1234 or username" style={inputStyle} />
-                                                {errors.discord && <p className="text-red-400 text-xs mt-1">{errors.discord.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Date of Birth *</label>
-                                                <input {...register("dateOfBirth")} type="date" style={inputStyle} />
-                                                {errors.dateOfBirth && <p className="text-red-400 text-xs mt-1">{errors.dateOfBirth.message}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>Gender *</label>
-                                                <Controller
-                                                    control={control}
-                                                    name="gender"
-                                                    render={({ field }) => (
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select gender" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="male">Male</SelectItem>
-                                                                <SelectItem value="female">Female</SelectItem>
-                                                                <SelectItem value="non-binary">Non-binary</SelectItem>
-                                                                <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    )}
-                                                />
-                                                {errors.gender && <p className="text-red-400 text-xs mt-1">{errors.gender.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Country *</label>
-                                                <input {...register("country")} placeholder="India" style={inputStyle} />
-                                                {errors.country && <p className="text-red-400 text-xs mt-1">{errors.country.message}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>City *</label>
-                                            <input {...register("city")} placeholder="Mumbai" style={inputStyle} />
-                                            {errors.city && <p className="text-red-400 text-xs mt-1">{errors.city.message}</p>}
-                                        </div>
-                                    </motion.div>
-                                )}
+                        {/* Mobile Progress Bar */}
+                        <div className="lg:hidden mb-6 overflow-x-auto pb-4 scrollbar-hide">
+                            <div className="flex items-center gap-2 min-w-max">
+                                {steps.map((step, index) => (
+                                    <div
+                                        key={step.id}
+                                        className={`flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-bold whitespace-nowrap ${step.id === currentStep ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" :
+                                                step.id < currentStep ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
+                                                    "bg-white/5 border-white/10 text-slate-500"
+                                            }`}
+                                    >
+                                        <span>{step.id}. {step.title}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
 
-                                {/* Step 2: Education */}
-                                {currentStep === 2 && (
-                                    <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div>
-                                            <label style={labelStyle}>Education Level *</label>
-                                            <Controller
-                                                control={control}
-                                                name="educationLevel"
-                                                render={({ field }) => (
-                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select level" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
+                        {/* Main Form */}
+                        <div className="flex-1">
+                            <div className="p-6 md:p-10 rounded-3xl bg-black/40 backdrop-blur-xl border border-white/10 relative overflow-hidden">
+                                {/* Decorative Gradient */}
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+
+                                <h2 className="text-2xl font-bold text-white mb-6 relative flex items-center gap-3">
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/10 text-sm">{currentStep}</span>
+                                    {steps[currentStep - 1]?.title}
+                                </h2>
+
+                                <form onSubmit={handleSubmit(onSubmit)}>
+                                    <AnimatePresence mode="wait">
+                                        <motion.div
+                                            key={currentStep}
+                                            initial={{ opacity: 0, x: 20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, x: -20 }}
+                                            transition={{ duration: 0.3 }}
+                                            className="space-y-6 relative z-10"
+                                        >
+
+                                            {/* STEP 1: PERSONAL */}
+                                            {currentStep === 1 && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Your legal first name.">First Name</Label>
+                                                        <Input {...register("firstName")} placeholder="Eg. Sarah" error={errors.firstName?.message} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Your legal last name.">Last Name</Label>
+                                                        <Input {...register("lastName")} placeholder="Eg. Connor" error={errors.lastName?.message} />
+                                                    </div>
+                                                    <div className="space-y-2 md:col-span-2">
+                                                        <Label tooltip="We will send your acceptance letter here.">Email Address</Label>
+                                                        <Input {...register("email")} disabled={!!user?.email} className={user?.email ? "opacity-60 cursor-not-allowed" : ""} error={errors.email?.message} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="For emergency contact during the event.">Phone Number</Label>
+                                                        <Input {...register("phone")} placeholder="+91 98765 43210" error={errors.phone?.message} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="To verify age eligibility for prizes.">Date of Birth</Label>
+                                                        <Input type="date" {...register("dateOfBirth")} error={errors.dateOfBirth?.message} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Helps us ensure diversity.">Gender</Label>
+                                                        <SelectController name="gender" control={control} error={errors.gender?.message} placeholder="Select Gender">
+                                                            <SelectItem value="male">Male</SelectItem>
+                                                            <SelectItem value="female">Female</SelectItem>
+                                                            <SelectItem value="non-binary">Non-binary</SelectItem>
+                                                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                                                        </SelectController>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Country of residence.">Country</Label>
+                                                        <Input {...register("country")} placeholder="India" error={errors.country?.message} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="City of residence.">City</Label>
+                                                        <Input {...register("city")} placeholder="New Delhi" error={errors.city?.message} />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* STEP 2: DISCORD (NEW STEP) */}
+                                            {currentStep === 2 && (
+                                                <div className="space-y-8">
+                                                    <div className="flex items-center gap-4 p-4 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20">
+                                                        <div className="w-12 h-12 rounded-lg bg-[#5865F2]/20 flex items-center justify-center text-[#5865F2] shrink-0">
+                                                            <svg className="w-8 h-8 fill-current" viewBox="0 0 127.14 96.36">
+                                                                <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.05,105.05,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.11,77.11,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.89,105.89,0,0,0,126.6,80.22c1.24-18.87-3.03-43.43-18.9-72.15ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5.06-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-xl font-bold text-white mb-1">Join the Community</h3>
+                                                            <p className="text-slate-400 text-sm">Communication happens on Discord. Please verify your details carefully.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Your Discord username (e.g., 'akshat'). Join our server first!">Discord Username</Label>
+                                                            <Input {...register("discord")} placeholder="username" error={errors.discord?.message} />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Settings > Advanced > Developer Mode (ON) > Right Click Profile > Copy User ID.">Discord User ID</Label>
+                                                            <Input {...register("discordId")} placeholder="e.g. 739384..." error={errors.discordId?.message} />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="When are you usually active for team syncs?">Active Hours</Label>
+                                                            <SelectController name="discordAvailability" control={control} error={errors.discordAvailability?.message} placeholder="Select Availability">
+                                                                <SelectItem value="morning">Morning (6AM - 12PM)</SelectItem>
+                                                                <SelectItem value="afternoon">Afternoon (12PM - 6PM)</SelectItem>
+                                                                <SelectItem value="evening">Evening (6PM - 12AM)</SelectItem>
+                                                                <SelectItem value="late-night">Late Night (12AM - 6AM)</SelectItem>
+                                                            </SelectController>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Required for calculating meeting times.">Timezone</Label>
+                                                            <SelectController name="timezone" control={control} error={errors.timezone?.message} placeholder="Select Timezone">
+                                                                <SelectItem value="IST">IST (Indian Standard Time)</SelectItem>
+                                                                <SelectItem value="UTC">UTC (Coordinated Universal Time)</SelectItem>
+                                                                <SelectItem value="EST">EST (Eastern Standard Time)</SelectItem>
+                                                                <SelectItem value="PST">PST (Pacific Standard Time)</SelectItem>
+                                                                <SelectItem value="CET">CET (Central European Time)</SelectItem>
+                                                                <SelectItem value="other">Other</SelectItem>
+                                                            </SelectController>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* STEP 3: EDUCATION */}
+                                            {currentStep === 3 && (
+                                                <div className="space-y-6">
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Your highest level of education.">Current Education Level</Label>
+                                                        <SelectController name="educationLevel" control={control} error={errors.educationLevel?.message} placeholder="Select Level">
                                                             <SelectItem value="high-school">High School</SelectItem>
                                                             <SelectItem value="undergraduate">Undergraduate</SelectItem>
                                                             <SelectItem value="graduate">Graduate</SelectItem>
                                                             <SelectItem value="phd">PhD</SelectItem>
                                                             <SelectItem value="working-professional">Working Professional</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            />
-                                            {errors.educationLevel && <p className="text-red-400 text-xs mt-1">{errors.educationLevel.message}</p>}
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Institution Name *</label>
-                                            <input {...register("institution")} placeholder="IIT Mumbai" style={inputStyle} />
-                                            {errors.institution && <p className="text-red-400 text-xs mt-1">{errors.institution.message}</p>}
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>Field of Study *</label>
-                                                <input {...register("fieldOfStudy")} placeholder="Computer Science" style={inputStyle} />
-                                                {errors.fieldOfStudy && <p className="text-red-400 text-xs mt-1">{errors.fieldOfStudy.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Graduation Year *</label>
-                                                <Controller
-                                                    control={control}
-                                                    name="graduationYear"
-                                                    render={({ field }) => (
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select year" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((year) => (
-                                                                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                                                        </SelectController>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Name of your school or university.">Institution / College Name</Label>
+                                                        <Input {...register("institution")} placeholder="Eg. IIT Bombay" error={errors.institution?.message} />
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Your major or specialization.">Field of Study</Label>
+                                                            <Input {...register("fieldOfStudy")} placeholder="Eg. Computer Science" error={errors.fieldOfStudy?.message} />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Expected or actual year of graduation.">Graduation Year</Label>
+                                                            <SelectController name="graduationYear" control={control} error={errors.graduationYear?.message} placeholder="Select Year">
+                                                                {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                                                                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
                                                                 ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    )}
-                                                />
-                                                {errors.graduationYear && <p className="text-red-400 text-xs mt-1">{errors.graduationYear.message}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Coding Experience *</label>
-                                            <Controller
-                                                control={control}
-                                                name="experienceLevel"
-                                                render={({ field }) => (
-                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select experience" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
+                                                            </SelectController>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Years of programming experience.">Coding Experience</Label>
+                                                        <SelectController name="experienceLevel" control={control} error={errors.experienceLevel?.message} placeholder="Select Experience">
                                                             <SelectItem value="beginner">Beginner (&lt; 1 year)</SelectItem>
                                                             <SelectItem value="intermediate">Intermediate (1-3 years)</SelectItem>
                                                             <SelectItem value="advanced">Advanced (3-5 years)</SelectItem>
                                                             <SelectItem value="expert">Expert (5+ years)</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            />
-                                            {errors.experienceLevel && <p className="text-red-400 text-xs mt-1">{errors.experienceLevel.message}</p>}
-                                        </div>
-                                    </motion.div>
-                                )}
+                                                        </SelectController>
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                {/* Step 3: Skills */}
-                                {currentStep === 3 && (
-                                    <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div>
-                                            <label style={labelStyle}>Primary Role *</label>
-                                            <Controller
-                                                control={control}
-                                                name="primarySkill"
-                                                render={({ field }) => (
-                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select role" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
+                                            {/* STEP 4: SKILLS */}
+                                            {currentStep === 4 && (
+                                                <div className="space-y-6">
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Your main area of expertise.">Primary Role</Label>
+                                                        <SelectController name="primarySkill" control={control} error={errors.primarySkill?.message} placeholder="What do you do best?">
                                                             <SelectItem value="frontend">Frontend Developer</SelectItem>
                                                             <SelectItem value="backend">Backend Developer</SelectItem>
                                                             <SelectItem value="fullstack">Full Stack Developer</SelectItem>
@@ -599,326 +593,285 @@ function ApplyPageContent() {
                                                             <SelectItem value="devops">DevOps Engineer</SelectItem>
                                                             <SelectItem value="designer">UI/UX Designer</SelectItem>
                                                             <SelectItem value="product">Product Manager</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            />
-                                            {errors.primarySkill && <p className="text-red-400 text-xs mt-1">{errors.primarySkill.message}</p>}
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Programming Languages *</label>
-                                            <input {...register("programmingLanguages")} placeholder="Python, JavaScript, Java" style={inputStyle} />
-                                            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Comma separated</p>
-                                            {errors.programmingLanguages && <p className="text-red-400 text-xs mt-1">{errors.programmingLanguages.message}</p>}
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Frameworks & Tools</label>
-                                            <input {...register("frameworks")} placeholder="React, Node.js, TensorFlow" style={inputStyle} />
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>GitHub URL</label>
-                                                <input {...register("github")} placeholder="https://github.com/you" style={inputStyle} />
-                                                {errors.github && <p className="text-red-400 text-xs mt-1">{errors.github.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>LinkedIn URL</label>
-                                                <input {...register("linkedin")} placeholder="https://linkedin.com/in/you" style={inputStyle} />
-                                                {errors.linkedin && <p className="text-red-400 text-xs mt-1">{errors.linkedin.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Portfolio URL</label>
-                                                <input {...register("portfolio")} placeholder="https://yoursite.com" style={inputStyle} />
-                                                {errors.portfolio && <p className="text-red-400 text-xs mt-1">{errors.portfolio.message}</p>}
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                )}
+                                                        </SelectController>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Languages you are comfortable with.">Languages & Tools</Label>
+                                                        <Input {...register("programmingLanguages")} placeholder="Eg. Python, JS, React (Comma separated)" error={errors.programmingLanguages?.message} />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Link to your GitHub profile.">GitHub URL</Label>
+                                                        <Input {...register("github")} placeholder="https://github.com/..." error={errors.github?.message} />
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Link to your LinkedIn profile.">LinkedIn URL</Label>
+                                                            <Input {...register("linkedin")} placeholder="https://linkedin.com/in/..." error={errors.linkedin?.message} />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Link to your personal website (optional).">Portfolio URL (Optional)</Label>
+                                                            <Input {...register("portfolio")} placeholder="https://..." error={errors.portfolio?.message} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                {/* Step 4: Team */}
-                                {currentStep === 4 && (
-                                    <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div>
-                                            <div className="p-4 mb-6 rounded-xl border border-red-500/50 bg-red-950/20 text-red-200">
-                                                <p className="font-bold text-lg mb-1 flex items-center gap-2">
-                                                    ⚠️  IMPORTANT FOR TEAMS
-                                                </p>
-                                                <p className="text-sm">
-                                                    If you are part of a team, <strong>EACH MEMBER MUST REGISTER INDIVIDUALLY</strong>.
-                                                    You will link your team later. Do not submit one application for the whole team.
-                                                </p>
-                                            </div>
+                                            {/* STEP 5: TEAM */}
+                                            {currentStep === 5 && (
+                                                <div className="space-y-6">
+                                                    <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/10 flex gap-4">
+                                                        <AlertCircle className="w-6 h-6 text-amber-500 flex-shrink-0" />
+                                                        <div className="text-sm">
+                                                            <h4 className="font-bold text-amber-200 mb-1">Important for Teams</h4>
+                                                            <p className="text-amber-100/70 leading-relaxed">Each member must submit their own individual application. You will be able to form/join teams on Discord or via the dashboard later.</p>
+                                                        </div>
+                                                    </div>
 
-                                            <label style={labelStyle}>Team Preference *</label>
-                                            <Controller
-                                                control={control}
-                                                name="teamPreference"
-                                                render={({ field }) => (
-                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select preference" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="solo">Solo (Individual participation)</SelectItem>
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Do you have a team or are you looking for one?">Team Preference</Label>
+                                                        <SelectController name="teamPreference" control={control} error={errors.teamPreference?.message} placeholder="Select Status">
+                                                            <SelectItem value="solo">Solo Hacker</SelectItem>
                                                             <SelectItem value="have-team">I have a team</SelectItem>
                                                             <SelectItem value="looking-for-team">Looking for teammates</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            />
-                                            {errors.teamPreference && <p className="text-red-400 text-xs mt-1">{errors.teamPreference.message}</p>}
-                                        </div>
-                                        {teamPreference === "have-team" && (
-                                            <div>
-                                                <label style={labelStyle}>Team Name</label>
-                                                <input {...register("teamName")} placeholder="Team Awesome" style={inputStyle} />
-                                            </div>
-                                        )}
-                                        {teamPreference === "looking-for-team" && (
-                                            <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                                                <p className="font-medium mb-1" style={{ color: "var(--accent)" }}>Looking for teammates!</p>
-                                                <p className="text-sm" style={{ color: "var(--text-muted)" }}>You&apos;ll be added to our team formation channel on Discord.</p>
-                                            </div>
-                                        )}
-                                        <div className="p-5 rounded-xl" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
-                                            <h4 className="font-medium mb-3" style={{ color: "var(--text-primary)" }}>Team Guidelines</h4>
-                                            <ul className="text-sm space-y-1" style={{ color: "var(--text-muted)" }}>
-                                                <li>• Teams can have 1-4 members</li>
-                                                <li>• All team members must register individually</li>
-                                                <li>• Teams can be modified until March 10, 2026</li>
-                                                <li>• Solo participants are eligible for all prizes</li>
-                                            </ul>
-                                        </div>
-                                    </motion.div>
-                                )}
+                                                        </SelectController>
+                                                    </div>
 
-                                {/* Step 5: Motivation */}
-                                {currentStep === 5 && (
-                                    <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-                                        <div>
-                                            <label style={labelStyle}>Why do you want to participate? *</label>
-                                            <textarea {...register("motivation")} placeholder="Tell us what excites you..." style={{ ...inputStyle, height: "8rem", resize: "none" }} />
-                                            {errors.motivation && <p className="text-red-400 text-xs mt-1">{errors.motivation.message}</p>}
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Project Idea (optional)</label>
-                                            <textarea {...register("projectIdea")} placeholder="Briefly describe your idea..." style={{ ...inputStyle, height: "6rem", resize: "none" }} />
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>Previous Hackathons</label>
-                                                <input {...register("previousHackathons")} placeholder="HackMIT, ETHGlobal..." style={inputStyle} />
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>How did you hear about us? *</label>
-                                                <Controller
-                                                    control={control}
-                                                    name="hearAboutUs"
-                                                    render={({ field }) => (
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select option" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="social-media">Social Media</SelectItem>
-                                                                <SelectItem value="friend">Friend/Colleague</SelectItem>
-                                                                <SelectItem value="university">University/College</SelectItem>
-                                                                <SelectItem value="newsletter">Newsletter</SelectItem>
-                                                                <SelectItem value="search">Google Search</SelectItem>
-                                                                <SelectItem value="other">Other</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
+                                                    {teamPreference === "have-team" && (
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Your team's name if you have one.">Team Name (Tentative)</Label>
+                                                            <Input {...register("teamName")} placeholder="Eg. NullPointers" />
+                                                        </div>
                                                     )}
-                                                />
-                                                {errors.hearAboutUs && <p className="text-red-400 text-xs mt-1">{errors.hearAboutUs.message}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label style={labelStyle}>T-Shirt Size *</label>
-                                                <Controller
-                                                    control={control}
-                                                    name="tShirtSize"
-                                                    render={({ field }) => (
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select size" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
+                                                </div>
+                                            )}
+
+                                            {/* STEP 6: MOTIVATION */}
+                                            {currentStep === 6 && (
+                                                <div className="space-y-6">
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Why do you want to participate in Incepta?">Why do you want to join INCEPTA?</Label>
+                                                        <textarea
+                                                            {...register("motivation")}
+                                                            className="w-full h-32 bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-cyan-500/50 transition-colors resize-none"
+                                                            placeholder="Tell us what drives you..."
+                                                        />
+                                                        {errors.motivation && <p className="text-rose-400 text-xs">{errors.motivation.message}</p>}
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <Label tooltip="Where did you find out about Incepta?">How did you hear about us?</Label>
+                                                        <SelectController name="hearAboutUs" control={control} error={errors.hearAboutUs?.message} placeholder="Select Source">
+                                                            <SelectItem value="social-media">Social Media</SelectItem>
+                                                            <SelectItem value="friend">Friend / Referral</SelectItem>
+                                                            <SelectItem value="university">University</SelectItem>
+                                                            <SelectItem value="community">Tech Community</SelectItem>
+                                                            <SelectItem value="other">Other</SelectItem>
+                                                        </SelectController>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="For your swag in case we can ship it!">T-Shirt Size</Label>
+                                                            <SelectController name="tShirtSize" control={control} error={errors.tShirtSize?.message} placeholder="Select Size">
                                                                 <SelectItem value="xs">XS</SelectItem>
                                                                 <SelectItem value="s">S</SelectItem>
                                                                 <SelectItem value="m">M</SelectItem>
                                                                 <SelectItem value="l">L</SelectItem>
                                                                 <SelectItem value="xl">XL</SelectItem>
                                                                 <SelectItem value="xxl">XXL</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    )}
-                                                />
-                                                {errors.tShirtSize && <p className="text-red-400 text-xs mt-1">{errors.tShirtSize.message}</p>}
-                                            </div>
-                                            <div>
-                                                <label style={labelStyle}>Dietary Restrictions</label>
-                                                <input {...register("dietaryRestrictions")} placeholder="Vegetarian, Vegan..." style={inputStyle} />
-                                            </div>
-                                        </div>
-                                        <div className="h-px my-6" style={{ background: "var(--border-subtle)" }} />
-                                        <div className="space-y-4">
-                                            <label className="flex items-start gap-3 cursor-pointer">
-                                                <input type="checkbox" {...register("agreeCodeOfConduct")} className="mt-1 w-4 h-4 rounded accent-emerald-500" />
-                                                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                                                    I agree to the <Link href="/conduct" style={{ color: "var(--accent)" }}>Code of Conduct</Link>
-                                                </span>
-                                            </label>
-                                            {errors.agreeCodeOfConduct && <p className="text-red-400 text-xs">{errors.agreeCodeOfConduct.message}</p>}
-                                            <label className="flex items-start gap-3 cursor-pointer">
-                                                <input type="checkbox" {...register("agreeTerms")} className="mt-1 w-4 h-4 rounded accent-emerald-500" />
-                                                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                                                    I agree to the <Link href="/terms" style={{ color: "var(--accent)" }}>Terms</Link> and <Link href="/privacy" style={{ color: "var(--accent)" }}>Privacy Policy</Link>
-                                                </span>
-                                            </label>
-                                            {errors.agreeTerms && <p className="text-red-400 text-xs">{errors.agreeTerms.message}</p>}
-                                        </div>
-                                    </motion.div>
-                                )}
-
-                                {/* Step 6: Payment */}
-                                {currentStep === 6 && (
-                                    <motion.div key="step6" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="py-4">
-                                        {paymentSubmitted ? (
-                                            // Payment submitted - show confirmation
-                                            <div className="text-center py-8">
-                                                <div
-                                                    className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
-                                                    style={{ background: "rgba(34,197,94,0.15)" }}
-                                                >
-                                                    <Check className="w-10 h-10" style={{ color: "var(--accent)" }} />
-                                                </div>
-                                                <h3 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>Payment Submitted!</h3>
-                                                <p className="mb-4" style={{ color: "var(--text-muted)" }}>Your transaction ID: <strong style={{ color: "var(--accent)" }}>{transactionId}</strong></p>
-                                                <p className="mb-8" style={{ color: "var(--text-muted)" }}>We&apos;ll verify your payment within 24 hours and send you a confirmation email.</p>
-                                                <Link href="/profile" style={{ ...btnPrimaryStyle, padding: "1rem 2rem" }}>
-                                                    View Your Profile <ArrowRight className="w-4 h-4" />
-                                                </Link>
-                                            </div>
-                                        ) : (
-                                            // Payment form
-                                            <>
-                                                <div className="text-center mb-6">
-                                                    <div
-                                                        className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                                                        style={{ background: "rgba(34,197,94,0.15)" }}
-                                                    >
-                                                        <Check className="w-8 h-8" style={{ color: "var(--accent)" }} />
-                                                    </div>
-                                                    <h3 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>Application Submitted!</h3>
-                                                    <p style={{ color: "var(--text-muted)" }}>Complete payment to confirm your spot</p>
-                                                </div>
-
-                                                {/* Amount Card */}
-                                                <div className="rounded-xl p-5 mb-6 max-w-md mx-auto" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
-                                                    <div className="flex justify-between mb-2">
-                                                        <span style={{ color: "var(--text-muted)" }}>Registration Fee</span>
-                                                        <span className="font-semibold" style={{ color: "var(--text-primary)" }}>₹60</span>
-                                                    </div>
-                                                    <div className="flex justify-between pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                                        <span className="font-bold" style={{ color: "var(--text-primary)" }}>Total</span>
-                                                        <span className="font-bold text-xl" style={{ color: "var(--accent)" }}>₹60</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Payment Instructions */}
-                                                <div className="rounded-xl p-5 mb-6 max-w-md mx-auto" style={{ background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
-                                                    <h4 className="font-semibold mb-4 text-center" style={{ color: "var(--text-primary)" }}>Pay via Razorpay</h4>
-
-                                                    <div className="space-y-4">
-                                                        <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                                                            <p className="mb-2"><strong>Step 1:</strong> Click the button below to pay ₹60</p>
-                                                            <p className="mb-2"><strong>Step 2:</strong> Note down the Reference/Transaction ID</p>
-                                                            <p><strong>Step 3:</strong> Come back here and enter the ID below</p>
+                                                            </SelectController>
                                                         </div>
+                                                        <div className="space-y-2">
+                                                            <Label tooltip="Any food allergies or preferences?">Dietary Restrictions</Label>
+                                                            <Input {...register("dietaryRestrictions")} placeholder="Eg. Vegetarian" />
+                                                        </div>
+                                                    </div>
 
-                                                        <a
-                                                            href={PAYMENT_LINK}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="block w-full text-center py-3 rounded-xl font-bold transition-transform hover:scale-[1.02]"
-                                                            style={{
-                                                                background: "var(--accent)",
-                                                                color: "#000",
-                                                                boxShadow: "0 4px 12px rgba(34, 211, 238, 0.3)"
-                                                            }}
-                                                        >
-                                                            Pay Now
-                                                        </a>
-                                                        <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-                                                            Opens secure payment page in new tab
-                                                        </p>
+                                                    <div className="pt-4 border-t border-white/10 space-y-4">
+                                                        <label className="flex items-start gap-3 cursor-pointer group">
+                                                            <input type="checkbox" {...register("agreeCodeOfConduct")} className="mt-1 w-4 h-4 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-offset-0 focus:ring-0" />
+                                                            <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">
+                                                                I adhere to the <Link href="/conduct" target="_blank" className="text-cyan-400 hover:underline">Code of Conduct</Link>.
+                                                            </span>
+                                                        </label>
+                                                        {errors.agreeCodeOfConduct && <p className="text-rose-400 text-xs">Required</p>}
+
+                                                        <label className="flex items-start gap-3 cursor-pointer group">
+                                                            <input type="checkbox" {...register("agreeTerms")} className="mt-1 w-4 h-4 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-offset-0 focus:ring-0" />
+                                                            <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">
+                                                                I agree to the <Link href="/terms" target="_blank" className="text-cyan-400 hover:underline">Terms & Conditions</Link> and Privacy Policy.
+                                                            </span>
+                                                        </label>
+                                                        {errors.agreeTerms && <p className="text-rose-400 text-xs">Required</p>}
                                                     </div>
                                                 </div>
+                                            )}
 
-                                                {/* Transaction ID Input */}
-                                                <div className="max-w-md mx-auto mb-6">
-                                                    <label style={labelStyle}>UPI Transaction ID / Reference Number *</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g., 401234567890"
-                                                        value={transactionId}
-                                                        onChange={(e) => setTransactionId(e.target.value)}
-                                                        style={inputStyle}
-                                                    />
-                                                    <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>Find this in your UPI app payment history</p>
+                                            {/* STEP 7: PAYMENT */}
+                                            {currentStep === 7 && (
+                                                <div className="space-y-8">
+                                                    {paymentSubmitted ? (
+                                                        <div className="text-center py-10">
+                                                            <div className="w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                                                                <Check className="w-12 h-12 text-emerald-400" />
+                                                            </div>
+                                                            <h3 className="text-2xl font-bold text-white mb-2">Registration Complete!</h3>
+                                                            <p className="text-slate-400 mb-8">We have received your application and payment details.</p>
+                                                            <Link href="/profile" className="inline-block px-8 py-3 bg-white text-black font-bold rounded-xl hover:bg-slate-200 transition-all">
+                                                                Go to Profile
+                                                            </Link>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <div className="p-6 rounded-2xl bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border border-cyan-500/20 text-center">
+                                                                <div className="text-sm text-cyan-200 uppercase tracking-widest font-bold mb-2">Registration Fee</div>
+                                                                <div className="text-5xl font-black text-white mb-2">₹60</div>
+                                                                <div className="text-slate-400 text-sm">Non-refundable • Secure Payment</div>
+                                                            </div>
+
+                                                            <div className="space-y-4">
+                                                                <h4 className="font-bold text-white flex items-center gap-2">
+                                                                    <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs">1</div>
+                                                                    Pay via Razorpay
+                                                                </h4>
+                                                                <a
+                                                                    href={PAYMENT_LINK}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="block w-full py-4 bg-[#3395ff] hover:bg-[#2884e6] text-white font-bold rounded-xl text-center transition-all shadow-lg shadow-blue-500/20"
+                                                                >
+                                                                    Pay Now with Razorpay
+                                                                </a>
+                                                            </div>
+
+                                                            <div className="space-y-4 pt-4 border-t border-white/10">
+                                                                <h4 className="font-bold text-white flex items-center gap-2">
+                                                                    <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs">2</div>
+                                                                    Enter Transaction ID
+                                                                </h4>
+                                                                <Input
+                                                                    value={transactionId}
+                                                                    onChange={(e) => setTransactionId(e.target.value)}
+                                                                    placeholder="Eg. pay_M1N3L7k..."
+                                                                />
+                                                                <p className="text-xs text-slate-500">
+                                                                    Paste the Payment ID / Transaction ID from your Razorpay receipt.
+                                                                </p>
+                                                            </div>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={handlePaymentSubmit}
+                                                                disabled={!transactionId.trim() || isSubmitting}
+                                                                className="w-full py-4 mt-6 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2"
+                                                            >
+                                                                {isSubmitting ? <Loader2 className="animate-spin w-5 h-5" /> : "Verify & Complete Registration"}
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
+                                            )}
 
-                                                <div className="text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={handlePaymentSubmit}
-                                                        disabled={isSubmitting || !transactionId.trim()}
-                                                        style={{ ...btnPrimaryStyle, padding: "1rem 2rem", fontSize: "1.125rem", opacity: (isSubmitting || !transactionId.trim()) ? 0.6 : 1 }}
-                                                    >
-                                                        {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Payment <ArrowRight className="w-4 h-4" /></>}
-                                                    </button>
+                                            {/* Navigation Buttons */}
+                                            {!paymentSubmitted && (
+                                                <div className="flex gap-4 pt-6 border-t border-white/5 mt-8">
+                                                    {currentStep > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={prevStep}
+                                                            className="px-6 py-3 rounded-xl font-semibold text-white bg-white/5 hover:bg-white/10 transition-all"
+                                                        >
+                                                            Back
+                                                        </button>
+                                                    )}
+                                                    {currentStep < 7 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={nextStep}
+                                                            className="flex-1 px-6 py-3 rounded-xl font-bold text-black bg-gradient-to-r from-cyan-400 to-blue-500 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            Next Step <ChevronRight className="w-4 h-4" />
+                                                        </button>
+                                                    ) : (
+                                                        !paymentSubmitted && currentStep !== 7 && (
+                                                            <button type="submit">Submit</button>
+                                                        )
+                                                    )}
                                                 </div>
-                                            </>
-                                        )}
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                                            )}
 
-                            {/* Navigation */}
-                            {currentStep < 6 && (
-                                <div className="flex justify-between mt-8 pt-6" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                                    <button
-                                        type="button"
-                                        onClick={prevStep}
-                                        disabled={currentStep === 1}
-                                        style={{ ...btnSecondaryStyle, opacity: currentStep === 1 ? 0.4 : 1 }}
-                                    >
-                                        <ChevronLeft className="w-4 h-4" /> Back
-                                    </button>
-                                    {currentStep < 5 ? (
-                                        <button type="button" onClick={nextStep} style={btnPrimaryStyle}>
-                                            Next <ChevronRight className="w-4 h-4" />
-                                        </button>
-                                    ) : (
-                                        <button type="submit" disabled={isSubmitting} style={{ ...btnPrimaryStyle, opacity: isSubmitting ? 0.6 : 1 }}>
-                                            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Application <ArrowRight className="w-4 h-4" /></>}
-                                        </button>
-                                    )}
-                                </div>
-                            )}
+                                        </motion.div>
+                                    </AnimatePresence>
+                                </form>
+                            </div>
                         </div>
-                    </form>
-                </div>
+                    </div>
+                </motion.div>
             </div>
         </>
     );
 }
 
+// Subcomponents
+function Label({ children, tooltip }: { children: React.ReactNode, tooltip?: string }) {
+    return (
+        <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1 flex items-center gap-2">
+            {children}
+            {tooltip && (
+                <div className="group relative">
+                    <Info className="w-3.5 h-3.5 text-slate-500 hover:text-cyan-400 transition-colors cursor-help" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl text-xs text-slate-300 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none transform translate-y-2 group-hover:translate-y-0">
+                        {tooltip}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900/95" />
+                    </div>
+                </div>
+            )}
+        </label>
+    )
+}
+
+function Input({ className, error, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { error?: string }) {
+    return (
+        <div className="relative">
+            <input
+                className={`w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all ${className}`}
+                {...props}
+            />
+            {error && <p className="text-rose-400 text-xs mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {error}</p>}
+        </div>
+    )
+}
+
+// FIX: Added bg-slate-950 to SelectContent to remove transparency
+function SelectController({ name, control, children, error, placeholder }: any) {
+    return (
+        <div>
+            <Controller
+                control={control}
+                name={name}
+                render={({ field }) => (
+                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                        <SelectTrigger className="w-full bg-black/20 border-white/10 text-white rounded-xl h-[50px]">
+                            <SelectValue placeholder={placeholder} />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-950 border-white/10 text-white">
+                            {children}
+                        </SelectContent>
+                    </Select>
+                )}
+            />
+            {error && <p className="text-rose-400 text-xs mt-1 ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {error}</p>}
+        </div>
+    )
+}
+
 export default function ApplyPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" style={{ color: "var(--accent)" }} /></div>}>
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-black">
+                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+            </div>
+        }>
             <ApplyPageContent />
         </Suspense>
     );

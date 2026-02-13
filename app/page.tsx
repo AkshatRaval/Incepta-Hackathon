@@ -72,7 +72,7 @@ export default function Home() {
                 transition={{ delay: 0.5, duration: 0.8 }}
                 className="text-lg sm:text-xl md:text-2xl text-slate-400 font-light max-w-3xl mx-auto mb-12 leading-relaxed px-4"
               >
-                <span className="text-white font-medium">9 Days.</span> <span className="text-cyan-400 font-medium">3 Rounds.</span> <span className="text-emerald-400 font-bold">1 Champion.</span>
+                <span className="text-white font-medium">9 Days.</span> <span className="text-cyan-400 font-medium">3 Rounds.</span> <span className="text-emerald-400 font-bold">3 Champions.</span>
                 <br />
                 <span className="text-slate-500">The ultimate test of engineering persistence and real-time adaptability.</span>
               </motion.p>
@@ -106,7 +106,6 @@ export default function Home() {
               >
                 {[
                   { value: "9", label: "Days" },
-                  { value: "100-200", label: "Teams" },
                   { value: "4", label: "Members/Team" },
                   { value: "₹60", label: "Entry Fee" },
                 ].map((stat, i) => (
@@ -233,15 +232,15 @@ export default function Home() {
                   transition={{ delay: i * 0.1 }}
                   className={`p-8 rounded-3xl bg-gradient-to-br ${item.gradient} border ${item.border} text-center hover:scale-105 transition-transform`}
                 >
-                  <div className="text-3xl mb-4">{item.place}</div>
-                  <div className="text-2xl font-bold text-white mb-2">{item.prize}</div>
-                  <p className="text-slate-400 text-sm">{item.sub}</p>
+                  <div className="text-3xl mb-4 text-white font-bold">{item.place}</div>
+                  <div className="text-xl font-bold text-white mb-2">{item.prize}</div>
+                  <p className="text-slate-400 w-full max-w-sm text-sm mx-auto">{item.sub}</p>
                 </motion.div>
               ))}
             </div>
 
             {/* Ecosystem Access */}
-            <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 rounded-[2rem] p-10 border border-emerald-500/20">
+            <div className="bg-linear-to-br from-emerald-500/10 to-cyan-500/10 rounded-4xl p-10 border border-emerald-500/20">
               <h3 className="text-2xl font-bold text-white mb-8 text-center">Ecosystem Access</h3>
               <div className="grid md:grid-cols-3 gap-8">
                 {[

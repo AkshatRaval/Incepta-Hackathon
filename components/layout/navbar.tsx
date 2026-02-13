@@ -32,6 +32,11 @@ export function Navbar() {
         setMobileOpen(false);
     }, [pathname]);
 
+    // Hide Navbar on Login and Signup pages to prevent overlap
+    if (pathname === "/login" || pathname === "/signup" || pathname === "/apply") {
+        return null;
+    }
+
     return (
         <>
             <header className="fixed top-0 left-0 right-0 z-50 flex justify-center items-start p-4 md:p-6 pointer-events-none">
@@ -41,8 +46,8 @@ export function Navbar() {
                     className={`
                         flex items-center justify-between pointer-events-auto
                         w-full max-w-7xl h-16 px-4 md:px-6 rounded-2xl transition-all duration-500
-                        ${scrolled 
-                            ? "bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl" 
+                        ${scrolled
+                            ? "bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl"
                             : "bg-black/40 backdrop-blur-md border border-white/5"
                         }
                     `}
@@ -71,7 +76,7 @@ export function Navbar() {
                                         </span>
                                     </div>
                                     {isActive && (
-                                        <motion.div 
+                                        <motion.div
                                             layoutId="nav-pill"
                                             className="absolute inset-0 bg-white/10 border border-white/10 rounded-full"
                                             transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
@@ -92,7 +97,7 @@ export function Navbar() {
                                             Profile
                                         </Link>
                                         <button onClick={() => signOut()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-red-400 hover:bg-red-400/10 hover:border-red-400/30 transition-all text-xs font-bold uppercase tracking-wider">
-                                            <LogOut size={14} /> 
+                                            <LogOut size={14} />
                                             <span className="hidden md:inline">Logout</span>
                                         </button>
                                     </>
@@ -111,10 +116,10 @@ export function Navbar() {
                                 )}
                             </div>
                         )}
-                        
+
                         {/* Mobile Toggle */}
-                        <button 
-                            onClick={() => setMobileOpen(!mobileOpen)} 
+                        <button
+                            onClick={() => setMobileOpen(!mobileOpen)}
                             className="lg:hidden p-2 text-white/70 hover:text-white transition-colors"
                             aria-label="Toggle menu"
                         >
@@ -134,14 +139,14 @@ export function Navbar() {
                         className="fixed inset-0 z-40 lg:hidden"
                     >
                         {/* Backdrop */}
-                        <motion.div 
+                        <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             className="absolute inset-0 bg-black/90 backdrop-blur-xl"
                             onClick={() => setMobileOpen(false)}
                         />
-                        
+
                         {/* Menu Content */}
                         <motion.div
                             initial={{ x: "100%" }}
@@ -163,13 +168,12 @@ export function Navbar() {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 transition={{ delay: i * 0.05 }}
                                             >
-                                                <Link 
+                                                <Link
                                                     href={link.href}
-                                                    className={`flex items-center gap-4 p-4 rounded-xl transition-all ${
-                                                        isActive 
-                                                            ? "bg-cyan-500/10 border border-cyan-500/30 text-white shadow-[0_0_20px_rgba(6,182,212,0.15)]" 
-                                                            : "text-white/60 hover:text-white hover:bg-white/5"
-                                                    }`}
+                                                    className={`flex items-center gap-4 p-4 rounded-xl transition-all ${isActive
+                                                        ? "bg-cyan-500/10 border border-cyan-500/30 text-white shadow-[0_0_20px_rgba(6,182,212,0.15)]"
+                                                        : "text-white/60 hover:text-white hover:bg-white/5"
+                                                        }`}
                                                 >
                                                     <Icon size={20} className={isActive ? "text-cyan-400" : ""} />
                                                     <span className="font-semibold">{link.label}</span>
@@ -184,14 +188,14 @@ export function Navbar() {
                                     <div className="flex flex-col gap-3 mt-auto pt-6 border-t border-white/10">
                                         {user ? (
                                             <>
-                                                <Link 
+                                                <Link
                                                     href="/profile"
                                                     className="flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all"
                                                 >
                                                     <User size={20} />
                                                     <span className="font-semibold">Profile</span>
                                                 </Link>
-                                                <button 
+                                                <button
                                                     onClick={() => signOut()}
                                                     className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-all"
                                                 >
@@ -201,13 +205,13 @@ export function Navbar() {
                                             </>
                                         ) : (
                                             <>
-                                                <Link 
+                                                <Link
                                                     href="/login"
                                                     className="flex items-center justify-center gap-2 p-4 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all font-semibold"
                                                 >
                                                     Login
                                                 </Link>
-                                                <Link 
+                                                <Link
                                                     href="/apply"
                                                     className="flex items-center justify-center gap-2 p-4 rounded-xl bg-cyan-400 text-black hover:bg-cyan-300 transition-all font-bold"
                                                 >
