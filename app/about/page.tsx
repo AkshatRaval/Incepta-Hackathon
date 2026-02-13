@@ -278,6 +278,42 @@ export default function AboutPage() {
                         </div>
                     </section>
 
+                    {/* Meet the Team */}
+                    <section className="px-4 sm:px-6 py-24">
+                        <div className="max-w-4xl mx-auto text-center">
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                            >
+                                <h2 className="text-3xl sm:text-4xl font-bold mb-6" style={{ color: "var(--text-primary)" }}>
+                                    Built by <span className="gradient-text">Students</span>, for Students
+                                </h2>
+                                <p className="text-lg leading-relaxed mb-12" style={{ color: "var(--text-secondary)" }}>
+                                    INCEPTA is proudly organized by a passionate team of student developers, designers, and innovators. We believe in the power of community and are dedicated to creating the best possible hackathon experience for you.
+                                </p>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <div className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+                                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 mx-auto mb-4 opacity-80" />
+                                        <h3 className="text-xl font-bold text-white mb-1">Core Team</h3>
+                                        <p className="text-sm text-slate-400">Leading the vision and execution</p>
+                                    </div>
+                                    <div className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+                                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 mx-auto mb-4 opacity-80" />
+                                        <h3 className="text-xl font-bold text-white mb-1">Tech Team</h3>
+                                        <p className="text-sm text-slate-400">Building the platform and infrastructure</p>
+                                    </div>
+                                    <div className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md sm:col-span-2 lg:col-span-1">
+                                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 mx-auto mb-4 opacity-80" />
+                                        <h3 className="text-xl font-bold text-white mb-1">Outreach</h3>
+                                        <p className="text-sm text-slate-400">Connecting with communities</p>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    </section>
+
                     {/* Final CTA */}
                     <section className="px-4 sm:px-6 py-24 pb-32">
                         <div className="max-w-3xl mx-auto">

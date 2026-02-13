@@ -94,11 +94,12 @@ export async function POST(request: NextRequest) {
             updatedAt: new Date(),
         };
 
-        const docRef = await db.collection("applications").add(applicationData);
+        // Use inceptaId as the document ID
+        await db.collection("applications").doc(inceptaId).set(applicationData);
 
         return NextResponse.json({
             success: true,
-            applicationId: docRef.id,
+            applicationId: inceptaId,
             inceptaId,
             message: "Application submitted successfully"
         });

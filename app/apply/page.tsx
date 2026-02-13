@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useAuth } from "@/lib/auth-context";
@@ -24,12 +24,20 @@ import {
     ArrowRight,
     FileText,
 } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 const formSchema = z.object({
     firstName: z.string().min(2, "First name must be at least 2 characters"),
     lastName: z.string().min(2, "Last name must be at least 2 characters"),
     email: z.string().email("Invalid email address"),
     phone: z.string().min(10, "Phone number must be at least 10 digits"),
+    discord: z.string().min(1, "Discord handle is required"),
     dateOfBirth: z.string().min(1, "Date of birth is required"),
     gender: z.string().min(1, "Please select your gender"),
     country: z.string().min(1, "Country is required"),
@@ -42,9 +50,9 @@ const formSchema = z.object({
     primarySkill: z.string().min(1, "Primary skill is required"),
     programmingLanguages: z.string().min(1, "At least one language is required"),
     frameworks: z.string().optional(),
-    github: z.string().optional(),
-    linkedin: z.string().optional(),
-    portfolio: z.string().optional(),
+    github: z.string().url("Invalid URL").optional().or(z.literal("")),
+    linkedin: z.string().url("Invalid URL").optional().or(z.literal("")),
+    portfolio: z.string().url("Invalid URL").optional().or(z.literal("")),
     teamPreference: z.string().min(1, "Team preference is required"),
     teamName: z.string().optional(),
     lookingForTeammates: z.boolean().optional(),
@@ -142,10 +150,11 @@ function ApplyPageContent() {
     const [transactionId, setTransactionId] = useState("");
     const [paymentSubmitted, setPaymentSubmitted] = useState(false);
 
-    // UPI Payment Details - Update these with your actual UPI ID
-    const UPI_ID = process.env.NEXT_PUBLIC_UPI_ID || "your-upi-id@paytm";
+    // Payment Link
+    const PAYMENT_LINK = process.env.NEXT_PUBLIC_PAYMENT_LINK || "https://razorpay.me/@akshatraval";
     const {
         register,
+        control,
         handleSubmit,
         formState: { errors },
         setValue,
@@ -157,6 +166,15 @@ function ApplyPageContent() {
             agreeCodeOfConduct: false,
             agreeTerms: false,
             lookingForTeammates: false,
+            // Ensure empty strings for Select components to avoid uncontrolled/controlled warnings
+            gender: "",
+            educationLevel: "",
+            graduationYear: "",
+            experienceLevel: "",
+            primarySkill: "",
+            teamPreference: "",
+            hearAboutUs: "",
+            tShirtSize: "",
         },
     });
 
@@ -169,10 +187,16 @@ function ApplyPageContent() {
                 return;
             }
             try {
+                // Short timeout to prevent infinite loading feel if API lags
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
+
                 const token = await user.getIdToken();
-                const res = await fetch("/api/applications/me", {
+                const fetchPromise = fetch("/api/applications/me", {
                     headers: { Authorization: `Bearer ${token}` },
                 });
+
+                const res = await Promise.race([fetchPromise, timeoutPromise]) as Response;
+
                 if (res.ok) {
                     const data = await res.json();
                     if (data.application) {
@@ -186,8 +210,10 @@ function ApplyPageContent() {
                 setCheckingExisting(false);
             }
         };
-        checkExisting();
-    }, [user]);
+        if (!loading) {
+            checkExisting();
+        }
+    }, [user, loading]);
 
     useEffect(() => {
         if (user?.email) setValue("email", user.email);
@@ -204,9 +230,9 @@ function ApplyPageContent() {
 
     const validateStep = async (step: number) => {
         const fieldsToValidate: Record<number, (keyof FormData)[]> = {
-            1: ["firstName", "lastName", "email", "phone", "dateOfBirth", "gender", "country", "city"],
+            1: ["firstName", "lastName", "email", "phone", "discord", "dateOfBirth", "gender", "country", "city"],
             2: ["educationLevel", "institution", "fieldOfStudy", "graduationYear", "experienceLevel"],
-            3: ["primarySkill", "programmingLanguages"],
+            3: ["primarySkill", "programmingLanguages", "github", "linkedin", "portfolio"],
             4: ["teamPreference"],
             5: ["motivation", "hearAboutUs", "tShirtSize", "agreeCodeOfConduct", "agreeTerms"],
         };
@@ -270,11 +296,6 @@ function ApplyPageContent() {
         } finally {
             setIsSubmitting(false);
         }
-    };
-
-    const copyUpiId = () => {
-        navigator.clipboard.writeText(UPI_ID);
-        alert("UPI ID copied to clipboard!");
     };
 
     if (loading || checkingExisting) {
@@ -428,33 +449,48 @@ function ApplyPageContent() {
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div>
+                                                <label style={labelStyle}>Discord Handle *</label>
+                                                <input {...register("discord")} placeholder="username#1234 or username" style={inputStyle} />
+                                                {errors.discord && <p className="text-red-400 text-xs mt-1">{errors.discord.message}</p>}
+                                            </div>
+                                            <div>
                                                 <label style={labelStyle}>Date of Birth *</label>
                                                 <input {...register("dateOfBirth")} type="date" style={inputStyle} />
                                                 {errors.dateOfBirth && <p className="text-red-400 text-xs mt-1">{errors.dateOfBirth.message}</p>}
                                             </div>
-                                            <div>
-                                                <label style={labelStyle}>Gender *</label>
-                                                <select {...register("gender")} style={inputStyle}>
-                                                    <option value="">Select gender</option>
-                                                    <option value="male">Male</option>
-                                                    <option value="female">Female</option>
-                                                    <option value="non-binary">Non-binary</option>
-                                                    <option value="prefer-not-to-say">Prefer not to say</option>
-                                                </select>
-                                                {errors.gender && <p className="text-red-400 text-xs mt-1">{errors.gender.message}</p>}
-                                            </div>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label style={labelStyle}>Gender *</label>
+                                                <Controller
+                                                    control={control}
+                                                    name="gender"
+                                                    render={({ field }) => (
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select gender" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="male">Male</SelectItem>
+                                                                <SelectItem value="female">Female</SelectItem>
+                                                                <SelectItem value="non-binary">Non-binary</SelectItem>
+                                                                <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )}
+                                                />
+                                                {errors.gender && <p className="text-red-400 text-xs mt-1">{errors.gender.message}</p>}
+                                            </div>
                                             <div>
                                                 <label style={labelStyle}>Country *</label>
                                                 <input {...register("country")} placeholder="India" style={inputStyle} />
                                                 {errors.country && <p className="text-red-400 text-xs mt-1">{errors.country.message}</p>}
                                             </div>
-                                            <div>
-                                                <label style={labelStyle}>City *</label>
-                                                <input {...register("city")} placeholder="Mumbai" style={inputStyle} />
-                                                {errors.city && <p className="text-red-400 text-xs mt-1">{errors.city.message}</p>}
-                                            </div>
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>City *</label>
+                                            <input {...register("city")} placeholder="Mumbai" style={inputStyle} />
+                                            {errors.city && <p className="text-red-400 text-xs mt-1">{errors.city.message}</p>}
                                         </div>
                                     </motion.div>
                                 )}
@@ -464,14 +500,24 @@ function ApplyPageContent() {
                                     <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                                         <div>
                                             <label style={labelStyle}>Education Level *</label>
-                                            <select {...register("educationLevel")} style={inputStyle}>
-                                                <option value="">Select level</option>
-                                                <option value="high-school">High School</option>
-                                                <option value="undergraduate">Undergraduate</option>
-                                                <option value="graduate">Graduate</option>
-                                                <option value="phd">PhD</option>
-                                                <option value="working-professional">Working Professional</option>
-                                            </select>
+                                            <Controller
+                                                control={control}
+                                                name="educationLevel"
+                                                render={({ field }) => (
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select level" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="high-school">High School</SelectItem>
+                                                            <SelectItem value="undergraduate">Undergraduate</SelectItem>
+                                                            <SelectItem value="graduate">Graduate</SelectItem>
+                                                            <SelectItem value="phd">PhD</SelectItem>
+                                                            <SelectItem value="working-professional">Working Professional</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
                                             {errors.educationLevel && <p className="text-red-400 text-xs mt-1">{errors.educationLevel.message}</p>}
                                         </div>
                                         <div>
@@ -487,24 +533,44 @@ function ApplyPageContent() {
                                             </div>
                                             <div>
                                                 <label style={labelStyle}>Graduation Year *</label>
-                                                <select {...register("graduationYear")} style={inputStyle}>
-                                                    <option value="">Select year</option>
-                                                    {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((year) => (
-                                                        <option key={year} value={year}>{year}</option>
-                                                    ))}
-                                                </select>
+                                                <Controller
+                                                    control={control}
+                                                    name="graduationYear"
+                                                    render={({ field }) => (
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select year" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((year) => (
+                                                                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )}
+                                                />
                                                 {errors.graduationYear && <p className="text-red-400 text-xs mt-1">{errors.graduationYear.message}</p>}
                                             </div>
                                         </div>
                                         <div>
                                             <label style={labelStyle}>Coding Experience *</label>
-                                            <select {...register("experienceLevel")} style={inputStyle}>
-                                                <option value="">Select experience</option>
-                                                <option value="beginner">Beginner (&lt; 1 year)</option>
-                                                <option value="intermediate">Intermediate (1-3 years)</option>
-                                                <option value="advanced">Advanced (3-5 years)</option>
-                                                <option value="expert">Expert (5+ years)</option>
-                                            </select>
+                                            <Controller
+                                                control={control}
+                                                name="experienceLevel"
+                                                render={({ field }) => (
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select experience" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="beginner">Beginner (&lt; 1 year)</SelectItem>
+                                                            <SelectItem value="intermediate">Intermediate (1-3 years)</SelectItem>
+                                                            <SelectItem value="advanced">Advanced (3-5 years)</SelectItem>
+                                                            <SelectItem value="expert">Expert (5+ years)</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
                                             {errors.experienceLevel && <p className="text-red-400 text-xs mt-1">{errors.experienceLevel.message}</p>}
                                         </div>
                                     </motion.div>
@@ -515,18 +581,28 @@ function ApplyPageContent() {
                                     <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                                         <div>
                                             <label style={labelStyle}>Primary Role *</label>
-                                            <select {...register("primarySkill")} style={inputStyle}>
-                                                <option value="">Select role</option>
-                                                <option value="frontend">Frontend Developer</option>
-                                                <option value="backend">Backend Developer</option>
-                                                <option value="fullstack">Full Stack Developer</option>
-                                                <option value="mobile">Mobile Developer</option>
-                                                <option value="ml-ai">ML/AI Engineer</option>
-                                                <option value="data">Data Scientist</option>
-                                                <option value="devops">DevOps Engineer</option>
-                                                <option value="designer">UI/UX Designer</option>
-                                                <option value="product">Product Manager</option>
-                                            </select>
+                                            <Controller
+                                                control={control}
+                                                name="primarySkill"
+                                                render={({ field }) => (
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select role" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="frontend">Frontend Developer</SelectItem>
+                                                            <SelectItem value="backend">Backend Developer</SelectItem>
+                                                            <SelectItem value="fullstack">Full Stack Developer</SelectItem>
+                                                            <SelectItem value="mobile">Mobile Developer</SelectItem>
+                                                            <SelectItem value="ml-ai">ML/AI Engineer</SelectItem>
+                                                            <SelectItem value="data">Data Scientist</SelectItem>
+                                                            <SelectItem value="devops">DevOps Engineer</SelectItem>
+                                                            <SelectItem value="designer">UI/UX Designer</SelectItem>
+                                                            <SelectItem value="product">Product Manager</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
                                             {errors.primarySkill && <p className="text-red-400 text-xs mt-1">{errors.primarySkill.message}</p>}
                                         </div>
                                         <div>
@@ -542,15 +618,18 @@ function ApplyPageContent() {
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label style={labelStyle}>GitHub URL</label>
-                                                <input {...register("github")} placeholder="github.com/you" style={inputStyle} />
+                                                <input {...register("github")} placeholder="https://github.com/you" style={inputStyle} />
+                                                {errors.github && <p className="text-red-400 text-xs mt-1">{errors.github.message}</p>}
                                             </div>
                                             <div>
                                                 <label style={labelStyle}>LinkedIn URL</label>
-                                                <input {...register("linkedin")} placeholder="linkedin.com/in/you" style={inputStyle} />
+                                                <input {...register("linkedin")} placeholder="https://linkedin.com/in/you" style={inputStyle} />
+                                                {errors.linkedin && <p className="text-red-400 text-xs mt-1">{errors.linkedin.message}</p>}
                                             </div>
                                             <div>
                                                 <label style={labelStyle}>Portfolio URL</label>
-                                                <input {...register("portfolio")} placeholder="yoursite.com" style={inputStyle} />
+                                                <input {...register("portfolio")} placeholder="https://yoursite.com" style={inputStyle} />
+                                                {errors.portfolio && <p className="text-red-400 text-xs mt-1">{errors.portfolio.message}</p>}
                                             </div>
                                         </div>
                                     </motion.div>
@@ -560,13 +639,33 @@ function ApplyPageContent() {
                                 {currentStep === 4 && (
                                     <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
                                         <div>
+                                            <div className="p-4 mb-6 rounded-xl border border-red-500/50 bg-red-950/20 text-red-200">
+                                                <p className="font-bold text-lg mb-1 flex items-center gap-2">
+                                                    ⚠️  IMPORTANT FOR TEAMS
+                                                </p>
+                                                <p className="text-sm">
+                                                    If you are part of a team, <strong>EACH MEMBER MUST REGISTER INDIVIDUALLY</strong>.
+                                                    You will link your team later. Do not submit one application for the whole team.
+                                                </p>
+                                            </div>
+
                                             <label style={labelStyle}>Team Preference *</label>
-                                            <select {...register("teamPreference")} style={inputStyle}>
-                                                <option value="">Select preference</option>
-                                                <option value="solo">Solo (Individual participation)</option>
-                                                <option value="have-team">I have a team</option>
-                                                <option value="looking-for-team">Looking for teammates</option>
-                                            </select>
+                                            <Controller
+                                                control={control}
+                                                name="teamPreference"
+                                                render={({ field }) => (
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select preference" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="solo">Solo (Individual participation)</SelectItem>
+                                                            <SelectItem value="have-team">I have a team</SelectItem>
+                                                            <SelectItem value="looking-for-team">Looking for teammates</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
                                             {errors.teamPreference && <p className="text-red-400 text-xs mt-1">{errors.teamPreference.message}</p>}
                                         </div>
                                         {teamPreference === "have-team" && (
@@ -612,30 +711,50 @@ function ApplyPageContent() {
                                             </div>
                                             <div>
                                                 <label style={labelStyle}>How did you hear about us? *</label>
-                                                <select {...register("hearAboutUs")} style={inputStyle}>
-                                                    <option value="">Select option</option>
-                                                    <option value="social-media">Social Media</option>
-                                                    <option value="friend">Friend/Colleague</option>
-                                                    <option value="university">University/College</option>
-                                                    <option value="newsletter">Newsletter</option>
-                                                    <option value="search">Google Search</option>
-                                                    <option value="other">Other</option>
-                                                </select>
+                                                <Controller
+                                                    control={control}
+                                                    name="hearAboutUs"
+                                                    render={({ field }) => (
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select option" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="social-media">Social Media</SelectItem>
+                                                                <SelectItem value="friend">Friend/Colleague</SelectItem>
+                                                                <SelectItem value="university">University/College</SelectItem>
+                                                                <SelectItem value="newsletter">Newsletter</SelectItem>
+                                                                <SelectItem value="search">Google Search</SelectItem>
+                                                                <SelectItem value="other">Other</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )}
+                                                />
                                                 {errors.hearAboutUs && <p className="text-red-400 text-xs mt-1">{errors.hearAboutUs.message}</p>}
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div>
                                                 <label style={labelStyle}>T-Shirt Size *</label>
-                                                <select {...register("tShirtSize")} style={inputStyle}>
-                                                    <option value="">Select size</option>
-                                                    <option value="xs">XS</option>
-                                                    <option value="s">S</option>
-                                                    <option value="m">M</option>
-                                                    <option value="l">L</option>
-                                                    <option value="xl">XL</option>
-                                                    <option value="xxl">XXL</option>
-                                                </select>
+                                                <Controller
+                                                    control={control}
+                                                    name="tShirtSize"
+                                                    render={({ field }) => (
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select size" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="xs">XS</SelectItem>
+                                                                <SelectItem value="s">S</SelectItem>
+                                                                <SelectItem value="m">M</SelectItem>
+                                                                <SelectItem value="l">L</SelectItem>
+                                                                <SelectItem value="xl">XL</SelectItem>
+                                                                <SelectItem value="xxl">XXL</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )}
+                                                />
                                                 {errors.tShirtSize && <p className="text-red-400 text-xs mt-1">{errors.tShirtSize.message}</p>}
                                             </div>
                                             <div>
@@ -708,28 +827,33 @@ function ApplyPageContent() {
                                                     </div>
                                                 </div>
 
-                                                {/* UPI Payment Instructions */}
+                                                {/* Payment Instructions */}
                                                 <div className="rounded-xl p-5 mb-6 max-w-md mx-auto" style={{ background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
-                                                    <h4 className="font-semibold mb-4 text-center" style={{ color: "var(--text-primary)" }}>Pay via UPI</h4>
+                                                    <h4 className="font-semibold mb-4 text-center" style={{ color: "var(--text-primary)" }}>Pay via Razorpay</h4>
 
                                                     <div className="space-y-4">
                                                         <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                                                            <p className="mb-2"><strong>Step 1:</strong> Open any UPI app (GPay, PhonePe, Paytm, etc.)</p>
-                                                            <p className="mb-2"><strong>Step 2:</strong> Send ₹60 to the UPI ID below</p>
-                                                            <p><strong>Step 3:</strong> Enter your Transaction ID below</p>
+                                                            <p className="mb-2"><strong>Step 1:</strong> Click the button below to pay ₹60</p>
+                                                            <p className="mb-2"><strong>Step 2:</strong> Note down the Reference/Transaction ID</p>
+                                                            <p><strong>Step 3:</strong> Come back here and enter the ID below</p>
                                                         </div>
 
-                                                        <div className="rounded-lg p-3 flex items-center justify-between" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}>
-                                                            <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>{UPI_ID}</span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={copyUpiId}
-                                                                className="text-sm px-3 py-1 rounded-lg"
-                                                                style={{ background: "var(--accent)", color: "#000", fontWeight: 600 }}
-                                                            >
-                                                                Copy
-                                                            </button>
-                                                        </div>
+                                                        <a
+                                                            href={PAYMENT_LINK}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="block w-full text-center py-3 rounded-xl font-bold transition-transform hover:scale-[1.02]"
+                                                            style={{
+                                                                background: "var(--accent)",
+                                                                color: "#000",
+                                                                boxShadow: "0 4px 12px rgba(34, 211, 238, 0.3)"
+                                                            }}
+                                                        >
+                                                            Pay Now
+                                                        </a>
+                                                        <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
+                                                            Opens secure payment page in new tab
+                                                        </p>
                                                     </div>
                                                 </div>
 

@@ -18,9 +18,10 @@ const footerLinks = {
         { label: "Volunteer", href: "/apply" },
     ],
     legal: [
-        { label: "Privacy Policy", href: "/privacy" },
+        { label: "Refund Policy", href: "/refund" },
         { label: "Terms of Service", href: "/terms" },
         { label: "Code of Conduct", href: "/conduct" },
+        { label: "Help Center", href: "/help" },
         { label: "Contact Us", href: "/contact" },
     ],
 };
