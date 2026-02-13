@@ -31,28 +31,21 @@ export default function ContactPage() {
                         <ContactCard
                             icon={Mail}
                             title="Email Us"
-                            detail="hello@incepta.dev"
-                            href="mailto:hello@incepta.dev"
+                            detail="codamigos1@gmail.com"
+                            href="mailto:codamigos1@gmail.com"
                             delay={0.1}
-                        />
-                        <ContactCard
-                            icon={Phone}
-                            title="Call Us"
-                            detail="+91 98765 43210"
-                            href="tel:+919876543210"
-                            delay={0.2}
                         />
                         <ContactCard
                             icon={MapPin}
                             title="Visit Us"
-                            detail="Mumbai, India"
+                            detail="Gujrat, India"
                             delay={0.3}
                         />
                         <ContactCard
                             icon={MessageCircle}
                             title="Socials"
-                            detail="@incepta2026"
-                            href="https://twitter.com/incepta2026"
+                            detail="@officialcodamigos"
+                            href="https://instagram.com/officialcodamigos"
                             delay={0.4}
                         />
                     </div>
